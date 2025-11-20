@@ -7,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #059669;
@@ -41,7 +42,7 @@
         /* Layout */
         .dashboard {
             display: grid;
-            grid-template-columns: 280px 1fr 380px;
+            grid-template-columns: 280px 1fr;
             grid-template-rows: 60px 1fr;
             height: 100vh;
             gap: 1px;
@@ -127,6 +128,11 @@
             gap: 10px;
             transition: background-color 0.2s;
             font-size: 0.9em;
+            border: none;
+            background: none;
+            color: inherit;
+            width: 100%;
+            text-align: left;
         }
 
         .nav-item:hover {
@@ -157,6 +163,14 @@
             margin-top: 4px;
         }
 
+        /* Main Content Area */
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            background: var(--bg-dark);
+            overflow: hidden;
+        }
+
         /* Map Container */
         .map-container {
             position: relative;
@@ -168,7 +182,64 @@
             height: 100%;
         }
 
-        /* Map Controls - UPDATED WITH BETTER SPACING */
+        /* Event Panel */
+        .event-panel {
+            background: var(--bg-card);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--border);
+        }
+
+        /* View Management */
+        .view-container {
+            display: none;
+            grid-column: 1 / -1;
+            height: 100%;
+        }
+
+        .view-container.active {
+            display: grid;
+        }
+
+        .map-view {
+            grid-template-columns: 1fr 380px;
+        }
+
+        .full-view {
+            grid-template-columns: 1fr;
+        }
+
+        /* Content Views */
+        .content-view {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .content-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-card);
+        }
+
+        .content-header h2 {
+            font-size: 1.3em;
+            margin-bottom: 4px;
+        }
+
+        .content-subtitle {
+            font-size: 0.9em;
+            color: var(--text-muted);
+        }
+
+        .content-body {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        /* Map Controls */
         .map-controls {
             position: absolute;
             top: 16px;
@@ -176,7 +247,7 @@
             z-index: 1000;
             display: flex;
             flex-direction: column;
-            gap: 12px; /* Increased gap between control groups */
+            gap: 12px;
         }
 
         .control-group {
@@ -229,8 +300,8 @@
         /* Leaflet Zoom Controls Styling */
         .leaflet-control-zoom {
             border: none !important;
-            margin-top: 37px !important; /* Push zoom controls down below search */
-            margin-left: 324px !important;
+            margin-top: 36px !important;
+            margin-left: 326px !important;
         }
 
         .leaflet-control-zoom a {
@@ -245,13 +316,6 @@
         .leaflet-control-zoom a:hover {
             background: #f8fafc !important;
             border-color: #cbd5e1 !important;
-        }
-
-        /* Event Panel */
-        .event-panel {
-            background: var(--bg-card);
-            display: flex;
-            flex-direction: column;
         }
 
         .panel-header {
@@ -514,6 +578,172 @@
             margin-top: 2px;
         }
 
+        /* Analytics Styles */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-container {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .chart-title {
+            font-size: 0.9em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+
+        /* Sensor Management Styles */
+        .sensors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+
+        .sensor-card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .sensor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .sensor-name {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .sensor-status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+        }
+
+        .sensor-status.online {
+            background: var(--primary);
+            color: white;
+        }
+
+        .sensor-status.offline {
+            background: var(--critical);
+            color: white;
+        }
+
+        .sensor-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 0.85em;
+        }
+
+        .sensor-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sensor-detail-label {
+            color: var(--text-muted);
+            font-size: 0.8em;
+        }
+
+        .sensor-detail-value {
+            font-weight: 500;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        /* Blockchain Styles */
+        .transactions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .transaction-card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid var(--border);
+        }
+
+        .transaction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .transaction-hash {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85em;
+            color: var(--text-primary);
+        }
+
+        .transaction-status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+        }
+
+        .transaction-status.confirmed {
+            background: var(--primary);
+            color: white;
+        }
+
+        .transaction-status.pending {
+            background: var(--medium);
+            color: white;
+        }
+
+        .transaction-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 0.85em;
+        }
+
         /* Loading States */
         .loading {
             text-align: center;
@@ -566,10 +796,10 @@
         <div class="sidebar">
             <div class="nav-section">
                 <div class="nav-title">Navigation</div>
-                <div class="nav-item active">Map Overview</div>
-                <div class="nav-item">Analytics Dashboard</div>
-                <div class="nav-item">Sensor Management</div>
-                <div class="nav-item">Blockchain Ledger</div>
+                <button class="nav-item active" data-page="map">Map Overview</button>
+                <button class="nav-item" data-page="analytics">Analytics Dashboard</button>
+                <button class="nav-item" data-page="sensors">Sensor Management</button>
+                <button class="nav-item" data-page="blockchain">Blockchain Ledger</button>
             </div>
 
             <div class="nav-section">
@@ -589,38 +819,126 @@
             </div>
         </div>
 
-        <!-- Map -->
-        <div class="map-container">
-            <div class="map-controls">
-                <div class="control-group search-group">
-                    <input type="text" class="map-search" placeholder="Enter hub ID or coordinates (lat,lng)" id="searchInput">
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Map View (with event panel) -->
+            <div class="view-container map-view active" id="mapView">
+                <div class="map-container">
+                    <div class="map-controls">
+                        <div class="control-group search-group">
+                            <input type="text" class="map-search" placeholder="Enter hub ID or coordinates (lat,lng)" id="searchInput">
+                        </div>
+                        <div class="control-group button-group">
+                            <button class="map-button" onclick="resetView()">Reset View</button>
+                            <button class="map-button" onclick="locateHubs()">Locate Hubs</button>
+                        </div>
+                    </div>
+                    <div id="map"></div>
                 </div>
-                <div class="control-group button-group">
-                    <button class="map-button" onclick="resetView()">Reset View</button>
-                    <button class="map-button" onclick="locateHubs()">Locate Hubs</button>
+                <div class="event-panel">
+                    <div class="panel-header">
+                        <h2>Event Feed</h2>
+                        <p class="panel-subtitle">Real-time alerts from monitoring hubs</p>
+                    </div>
+
+                    <div class="event-tabs">
+                        <button class="event-tab active" data-filter="all">All Events</button>
+                        <button class="event-tab" data-filter="fire">Fire</button>
+                        <button class="event-tab" data-filter="chainsaw">Chainsaw</button>
+                        <button class="event-tab" data-filter="smoke">Smoke</button>
+                    </div>
+
+                    <div class="event-list" id="eventList">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading events...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div id="map"></div>
-        </div>
 
-        <!-- Event Panel -->
-        <div class="event-panel">
-            <div class="panel-header">
-                <h2>Event Feed</h2>
-                <p class="panel-subtitle">Real-time alerts from monitoring hubs</p>
+            <!-- Analytics Dashboard -->
+            <div class="view-container full-view" id="analyticsView">
+                <div class="content-view">
+                    <div class="content-header">
+                        <h2>Analytics Dashboard</h2>
+                        <p class="content-subtitle">Comprehensive insights and performance metrics</p>
+                    </div>
+                    <div class="content-body">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-value" id="totalEventsAnalytics">0</div>
+                                <div class="stat-label">Total Events (24h)</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="criticalEvents">0</div>
+                                <div class="stat-label">Critical Events</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="avgResponseTime">0m</div>
+                                <div class="stat-label">Avg Response Time</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="systemUptime">99.8%</div>
+                                <div class="stat-label">System Uptime</div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-grid">
+                            <div class="chart-container">
+                                <div class="chart-title">Events by Type</div>
+                                <canvas id="eventsByTypeChart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <div class="chart-title">Events Timeline (24h)</div>
+                                <canvas id="eventsTimelineChart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <div class="chart-title">Hub Performance</div>
+                                <canvas id="hubPerformanceChart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <div class="chart-title">Severity Distribution</div>
+                                <canvas id="severityChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="event-tabs">
-                <button class="event-tab active" data-filter="all">All Events</button>
-                <button class="event-tab" data-filter="fire">Fire</button>
-                <button class="event-tab" data-filter="chainsaw">Chainsaw</button>
-                <button class="event-tab" data-filter="smoke">Smoke</button>
+            <!-- Sensor Management -->
+            <div class="view-container full-view" id="sensorsView">
+                <div class="content-view">
+                    <div class="content-header">
+                        <h2>Sensor Management</h2>
+                        <p class="content-subtitle">Monitor and manage all sensor hubs</p>
+                    </div>
+                    <div class="content-body">
+                        <div class="sensors-grid" id="sensorsGrid">
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                <p>Loading sensor data...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="event-list" id="eventList">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading events...</p>
+            <!-- Blockchain Ledger -->
+            <div class="view-container full-view" id="blockchainView">
+                <div class="content-view">
+                    <div class="content-header">
+                        <h2>Blockchain Ledger</h2>
+                        <p class="content-subtitle">Immutable event verification records</p>
+                    </div>
+                    <div class="content-body">
+                        <div class="transactions-list" id="transactionsList">
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                <p>Loading blockchain data...</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -650,6 +968,7 @@
         let events = [];
         let markers = [];
         let currentFilter = 'all';
+        let currentPage = 'map';
 
         // Event type configurations
         const eventConfig = {
@@ -665,6 +984,48 @@
             await loadEvents();
             subscribeToRealtime();
             setupEventListeners();
+            setupNavigation();
+        }
+
+        // Navigation setup
+        function setupNavigation() {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const targetPage = this.dataset.page;
+                    switchPage(targetPage);
+                });
+            });
+        }
+
+        function switchPage(page) {
+            // Update active nav item
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-page="${page}"]`).classList.add('active');
+
+            // Hide all views
+            document.querySelectorAll('.view-container').forEach(view => {
+                view.classList.remove('active');
+            });
+
+            // Show target view
+            document.getElementById(`${page}View`).classList.add('active');
+            
+            currentPage = page;
+
+            // Load page-specific data
+            switch(page) {
+                case 'analytics':
+                    loadAnalyticsData();
+                    break;
+                case 'sensors':
+                    loadSensorsData();
+                    break;
+                case 'blockchain':
+                    loadBlockchainData();
+                    break;
+            }
         }
 
         // Load initial events
@@ -702,6 +1063,11 @@
                     updateMetrics();
                     renderEvents();
                     addMarkerToMap(payload.new);
+                    
+                    // Update analytics if on that page
+                    if (currentPage === 'analytics') {
+                        loadAnalyticsData();
+                    }
                 })
                 .subscribe();
         }
@@ -790,6 +1156,267 @@
 
             marker.on('click', () => showEventDetail(event.id));
             markers.push(marker);
+        }
+
+        // Analytics functions
+        async function loadAnalyticsData() {
+            // Update stats
+            const last24hEvents = events.filter(e => 
+                new Date(e.detected_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+            );
+            
+            document.getElementById('totalEventsAnalytics').textContent = last24hEvents.length;
+            document.getElementById('criticalEvents').textContent = 
+                last24hEvents.filter(e => e.severity === 'critical').length;
+
+            // Create charts
+            createEventsByTypeChart();
+            createEventsTimelineChart();
+            createHubPerformanceChart();
+            createSeverityChart();
+        }
+
+        function createEventsByTypeChart() {
+            const ctx = document.getElementById('eventsByTypeChart').getContext('2d');
+            const eventCounts = {};
+            
+            events.forEach(event => {
+                eventCounts[event.event_type] = (eventCounts[event.event_type] || 0) + 1;
+            });
+
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(eventCounts).map(key => eventConfig[key]?.label || key),
+                    datasets: [{
+                        data: Object.values(eventCounts),
+                        backgroundColor: Object.keys(eventCounts).map(key => eventConfig[key]?.color || '#666')
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#e2e8f0' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createEventsTimelineChart() {
+            const ctx = document.getElementById('eventsTimelineChart').getContext('2d');
+            // Simplified timeline data - in real app, you'd aggregate by hour
+            const last6Hours = events.filter(e => 
+                new Date(e.detected_at) > new Date(Date.now() - 6 * 60 * 60 * 1000)
+            ).length;
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['6h ago', '5h ago', '4h ago', '3h ago', '2h ago', '1h ago', 'Now'],
+                    datasets: [{
+                        label: 'Events',
+                        data: [Math.floor(last6Hours * 0.1), Math.floor(last6Hours * 0.2), Math.floor(last6Hours * 0.4), 
+                              Math.floor(last6Hours * 0.7), Math.floor(last6Hours * 0.9), Math.floor(last6Hours * 0.95), last6Hours],
+                        borderColor: '#059669',
+                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createHubPerformanceChart() {
+            const ctx = document.getElementById('hubPerformanceChart').getContext('2d');
+            const hubEvents = {};
+            
+            events.forEach(event => {
+                hubEvents[event.hub_id] = (hubEvents[event.hub_id] || 0) + 1;
+            });
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(hubEvents),
+                    datasets: [{
+                        label: 'Events per Hub',
+                        data: Object.values(hubEvents),
+                        backgroundColor: '#059669'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createSeverityChart() {
+            const ctx = document.getElementById('severityChart').getContext('2d');
+            const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+            
+            events.forEach(event => {
+                if (severityCounts.hasOwnProperty(event.severity)) {
+                    severityCounts[event.severity]++;
+                }
+            });
+
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Critical', 'High', 'Medium', 'Low'],
+                    datasets: [{
+                        data: Object.values(severityCounts),
+                        backgroundColor: ['#dc2626', '#ea580c', '#d97706', '#65a30d']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#e2e8f0' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Sensor management functions
+        async function loadSensorsData() {
+            try {
+                const { data: hubs, error } = await supabase
+                    .from('forest_hubs')
+                    .select('*')
+                    .order('hub_id');
+
+                if (error) throw error;
+
+                const container = document.getElementById('sensorsGrid');
+                if (hubs.length === 0) {
+                    container.innerHTML = '<div class="loading"><p>No sensors found</p></div>';
+                    return;
+                }
+
+                container.innerHTML = hubs.map(hub => `
+                    <div class="sensor-card">
+                        <div class="sensor-header">
+                            <div class="sensor-name">${hub.name || hub.hub_id}</div>
+                            <div class="sensor-status ${hub.status}">${hub.status}</div>
+                        </div>
+                        <div class="sensor-details">
+                            <div class="sensor-detail">
+                                <span class="sensor-detail-label">Hub ID</span>
+                                <span class="sensor-detail-value">${hub.hub_id}</span>
+                            </div>
+                            <div class="sensor-detail">
+                                <span class="sensor-detail-label">Location</span>
+                                <span class="sensor-detail-value">${hub.latitude?.toFixed(4)}, ${hub.longitude?.toFixed(4)}</span>
+                            </div>
+                            <div class="sensor-detail">
+                                <span class="sensor-detail-label">Battery</span>
+                                <span class="sensor-detail-value">${hub.battery_level || 'N/A'}%</span>
+                            </div>
+                            <div class="sensor-detail">
+                                <span class="sensor-detail-label">Signal</span>
+                                <span class="sensor-detail-value">${hub.signal_rssi || 'N/A'} dBm</span>
+                            </div>
+                            <div class="sensor-detail">
+                                <span class="sensor-detail-label">Last Seen</span>
+                                <span class="sensor-detail-value">${hub.last_seen ? formatTimeAgo(hub.last_seen) : 'Never'}</span>
+                            </div>
+                            <div class="sensor-detail">
+                                <span class="sensor-detail-label">Installed</span>
+                                <span class="sensor-detail-value">${hub.installed_at ? formatDateTime(hub.installed_at) : 'N/A'}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                console.error('Error loading sensors:', error);
+                document.getElementById('sensorsGrid').innerHTML = '<div class="loading"><p>Error loading sensors</p></div>';
+            }
+        }
+
+        // Blockchain functions
+        async function loadBlockchainData() {
+            const container = document.getElementById('transactionsList');
+            
+            // Filter events with blockchain data
+            const blockchainEvents = events.filter(event => event.blockchain_hash || event.blockchain_tx);
+            
+            if (blockchainEvents.length === 0) {
+                container.innerHTML = '<div class="loading"><p>No blockchain transactions found</p></div>';
+                return;
+            }
+
+            container.innerHTML = blockchainEvents.map(event => `
+                <div class="transaction-card">
+                    <div class="transaction-header">
+                        <div class="transaction-hash">${event.blockchain_hash ? event.blockchain_hash.substring(0, 32) + '...' : 'Pending...'}</div>
+                        <div class="transaction-status ${event.blockchain_confirmed ? 'confirmed' : 'pending'}">
+                            ${event.blockchain_confirmed ? 'Confirmed' : 'Pending'}
+                        </div>
+                    </div>
+                    <div class="transaction-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Event Type</span>
+                            <span class="detail-value">${eventConfig[event.event_type]?.label || event.event_type}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Hub ID</span>
+                            <span class="detail-value">${event.hub_id}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Severity</span>
+                            <span class="detail-value">${event.severity}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detected</span>
+                            <span class="detail-value">${formatDateTime(event.detected_at)}</span>
+                        </div>
+                        ${event.blockchain_tx ? `
+                        <div class="detail-item">
+                            <span class="detail-label">TX Hash</span>
+                            <span class="detail-value">${event.blockchain_tx.substring(0, 24)}...</span>
+                        </div>
+                        ` : ''}
+                        ${event.blockchain_block ? `
+                        <div class="detail-item">
+                            <span class="detail-label">Block</span>
+                            <span class="detail-value">${event.blockchain_block}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
         }
 
         // Show event detail panel
@@ -931,15 +1558,12 @@
         }
 
         function locateHubs() {
-            // Simple hub location functionality
             const searchTerm = document.getElementById('searchInput').value.trim();
             if (searchTerm) {
-                // Try to parse as coordinates
                 const coords = searchTerm.split(',').map(coord => parseFloat(coord.trim()));
                 if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
                     map.setView([coords[0], coords[1]], 14);
                 } else {
-                    // Search by hub ID
                     const hubEvents = events.filter(event => 
                         event.hub_id.toLowerCase().includes(searchTerm.toLowerCase())
                     );
