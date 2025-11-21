@@ -464,14 +464,19 @@ async function checkSensorAlerts(reading) {
         const threshold = thresholds[sensorType];
         let alertTriggered = false;
         let alertMessage = '';
+        let severity = 'medium';
         
         // Check thresholds
         if (threshold.max !== undefined && value > threshold.max) {
             alertTriggered = true;
             alertMessage = `${sensorType.toUpperCase()} reading (${value}) exceeded maximum threshold (${threshold.max})`;
+            // Set severity based on how much the threshold is exceeded
+            severity = value > threshold.max * 1.5 ? 'critical' : 'high';
         } else if (threshold.min !== undefined && value < threshold.min) {
             alertTriggered = true;
             alertMessage = `${sensorType.toUpperCase()} reading (${value}) below minimum threshold (${threshold.min})`;
+            // Set severity based on how much the threshold is exceeded
+            severity = value < threshold.min * 1.5 ? 'critical' : 'high';
         }
         
         // If alert triggered, create a forest alert
@@ -479,7 +484,7 @@ async function checkSensorAlerts(reading) {
             const alertEvent = {
                 hubId: 'SENSOR_NETWORK',
                 eventType: sensorType,
-                severity: value > threshold.max * 1.5 || value < threshold.min * 1.5 ? 'critical' : 'high',
+                severity: severity,
                 message: alertMessage,
                 sensorData: { [sensorType]: value },
                 timestamp: reading.timestamp

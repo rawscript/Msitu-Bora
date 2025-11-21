@@ -553,79 +553,122 @@
             font-family: 'Monaco', 'Menlo', monospace;
         }
 
-        .sensor-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 12px;
-        }
-
-        .sensor-item {
+        /* Sensor Data Styles */
+        .sensor-card {
             background: var(--bg-dark);
-            padding: 12px;
-            border-radius: 4px;
-            text-align: center;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border);
         }
 
-        .sensor-value {
-            font-size: 1.2em;
-            font-weight: 600;
+        .sensor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .sensor-header h3 {
+            margin: 0;
+            font-size: 1.1em;
             color: var(--text-primary);
         }
 
-        .sensor-unit {
-            font-size: 0.75em;
+        .sensor-count {
+            background: var(--border);
             color: var(--text-muted);
-            margin-top: 2px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
         }
 
-        /* Analytics Styles */
-        .analytics-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
+        .sensor-readings {
+            margin-bottom: 16px;
         }
 
-        .chart-container {
-            background: var(--bg-card);
-            border-radius: 8px;
-            padding: 20px;
-            border: 1px solid var(--border);
+        .sensor-reading {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
         }
 
-        .chart-title {
-            font-size: 0.9em;
+        .sensor-reading:last-child {
+            border-bottom: none;
+        }
+
+        .reading-value {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+
+        .reading-time {
             color: var(--text-muted);
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: var(--bg-card);
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 2em;
-            font-weight: 600;
-            color: var(--primary);
-            margin-bottom: 4px;
-        }
-
-        .stat-label {
             font-size: 0.85em;
+        }
+
+        .sensor-meta {
             color: var(--text-muted);
+            font-size: 0.8em;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Notifications */
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 3000;
+            background: var(--bg-card);
+            border-left: 4px solid var(--primary);
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 300px;
+            animation: slideInRight 0.3s ease-out;
+        }
+
+        .notification.warning {
+            border-left-color: var(--critical);
+        }
+
+        .notification-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+        }
+
+        .notification-message {
+            flex: 1;
+            font-size: 0.9em;
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2em;
+            cursor: pointer;
+            padding: 4px;
+            margin-left: 12px;
+        }
+
+        .notification-close:hover {
+            color: var(--text-primary);
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
 
         /* Sensor Management Styles */
@@ -793,6 +836,22 @@
             background: var(--primary);
             color: white;
         }
+
+        /* Loading Error */
+        .loading-error {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: #dc2626;
+            font-size: 0.9em;
+            text-align: center;
+            padding: 20px;
+            background: var(--bg-dark);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
     </style>
 </head>
 <body>
@@ -849,8 +908,8 @@
                             <input type="text" class="map-search" placeholder="Enter hub ID or coordinates (lat,lng)" id="searchInput">
                         </div>
                         <div class="control-group button-group">
-                            <button class="map-button" onclick="resetView()">Reset View</button>
-                            <button class="map-button" onclick="locateHubs()">Locate Hubs</button>
+                            <button class="map-button" id="resetViewBtn">Reset View</button>
+                            <button class="map-button" id="locateHubsBtn">Locate Hubs</button>
                         </div>
                     </div>
                     <div id="map"></div>
@@ -979,71 +1038,134 @@
         <!-- Populated dynamically -->
     </div>
 
-    <script>
-        // Configuration - Replace with your actual Supabase credentials
-        const SUPABASE_URL = 'https://your-project.supabase.co';
-        const SUPABASE_ANON_KEY = 'your-anon-key';
-        
-        // Initialize Supabase client
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+   <script>
+    // Global state
+    const state = {
+        events: [],
+        markers: [],
+        map: null,
+        currentFilter: 'all',
+        currentPage: 'map',
+        currentTimeWindow: '24h',
+        supabase: null,
+        isLoading: false
+    };
 
-        // Initialize map centered on Kakamega Forest
-        const map = L.map('map').setView([0.35, 34.85], 12);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+    // Event type configurations
+    const eventConfig = {
+        fire: { color: '#dc2626', label: 'Fire' },
+        chainsaw: { color: '#ea580c', label: 'Chainsaw' },
+        'tree-fall': { color: '#d97706', label: 'Tree Fall' },
+        smoke: { color: '#65a30d', label: 'Smoke' },
+        system: { color: '#059669', label: 'System' }
+    };
 
-        // Application state
-        let events = [];
-        let markers = [];
-        let currentFilter = 'all';
-        let currentPage = 'map';
-        let currentTimeWindow = '24h'; // Default time window
-
-        // Event type configurations
-        const eventConfig = {
-            fire: { color: '#dc2626', label: 'Fire' },
-            chainsaw: { color: '#ea580c', label: 'Chainsaw' },
-            'tree-fall': { color: '#d97706', label: 'Tree Fall' },
-            smoke: { color: '#65a30d', label: 'Smoke' },
-            system: { color: '#059669', label: 'System' }
-        };
-
-        // Initialize application
-        async function initialize() {
-            await loadEvents();
-            subscribeToRealtime();
-            setupEventListeners();
-            setupNavigation();
-        }
-
-        // Navigation setup
-        function setupNavigation() {
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.addEventListener('click', function() {
-                    const targetPage = this.dataset.page;
-                    switchPage(targetPage);
-                });
-            });
-        }
-
-        function switchPage(page) {
-            // Update active nav item
-            document.querySelectorAll('.nav-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            document.querySelector(`[data-page="${page}"]`).classList.add('active');
-
-            // Hide all views
-            document.querySelectorAll('.view-container').forEach(view => {
-                view.classList.remove('active');
-            });
-
-            // Show target view
-            document.getElementById(`${page}View`).classList.add('active');
+    // Initialize application
+    async function initialize() {
+        try {
+            console.log('🚀 Starting application initialization...');
             
-            currentPage = page;
+            // Set up UI first
+            setupNavigation();
+            setupEventListeners();
+            
+            // Initialize Supabase
+            await initializeSupabase();
+            
+            // Initialize map
+            initializeMap();
+            
+            // Load initial data
+            await loadEvents();
+            
+            // Set up real-time subscriptions
+            subscribeToRealtime();
+            subscribeToSensorUpdates();
+            
+            console.log('✅ Application initialized successfully');
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize application:', error);
+            showError(`Initialization failed: ${error.message}`);
+            
+            // Load demo data as fallback
+            initializeDemoMode();
+        }
+    }
+
+    // Initialize Supabase client
+    async function initializeSupabase() {
+        const supabaseUrl = 'https://rcthtxwzsqvwivritzln.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjdGh0eHd6c3F2d2l2cml0emxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI2NzM2MjAsImV4cCI6MjA2ODI0OTYyMH0._bSOH4oY3Ug1l-NY7OPnXQr4Mt5mD7WgugNKjlwWAkM';
+        
+        // Check if Supabase library is loaded
+        if (typeof supabase === 'undefined') {
+            throw new Error('Supabase library not loaded. Please check your internet connection.');
+        }
+        
+        state.supabase = supabase.createClient(supabaseUrl, supabaseKey);
+        console.log('✅ Supabase client initialized');
+    }
+
+    // Initialize map
+    function initializeMap() {
+        try {
+            state.map = L.map('map').setView([0.35, 34.85], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(state.map);
+            console.log('✅ Map initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize map:', error);
+            throw new Error('Map initialization failed: ' + error.message);
+        }
+    }
+
+    // Navigation setup - FIXED
+    function setupNavigation() {
+        console.log('Setting up navigation...');
+        
+        // Remove any existing event listeners first
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.replaceWith(item.cloneNode(true));
+        });
+
+        // Add new event listeners
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetPage = this.getAttribute('data-page');
+                console.log('Switching to page:', targetPage);
+                switchPage(targetPage);
+            });
+        });
+        
+        console.log('✅ Navigation setup complete');
+    }
+
+    function switchPage(page) {
+        console.log('Switching page to:', page);
+        
+        // Update active nav item
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        const navItem = document.querySelector(`[data-page="${page}"]`);
+        if (navItem) {
+            navItem.classList.add('active');
+        }
+
+        // Hide all views
+        document.querySelectorAll('.view-container').forEach(view => {
+            view.classList.remove('active');
+        });
+
+        // Show target view
+        const targetView = document.getElementById(`${page}View`);
+        if (targetView) {
+            targetView.classList.add('active');
+            state.currentPage = page;
 
             // Load page-specific data
             switch(page) {
@@ -1056,94 +1178,189 @@
                 case 'blockchain':
                     loadBlockchainData();
                     break;
+                case 'map':
+                    // Ensure map is properly sized when switching back
+                    setTimeout(() => {
+                        if (state.map) {
+                            state.map.invalidateSize();
+                        }
+                    }, 100);
+                    break;
             }
+        } else {
+            console.error('Target view not found:', `${page}View`);
+        }
+    }
+
+    // Load events with timeout and empty state handling
+    async function loadEvents() {
+        if (state.isLoading) {
+            console.log('Already loading events, skipping...');
+            return;
         }
 
-        // Load initial events
-        async function loadEvents() {
-            try {
-                const { data, error } = await supabase
-                    .from('forest_alerts')
-                    .select('*')
-                    .order('detected_at', { ascending: false })
-                    .limit(100);
+        state.isLoading = true;
+        const container = document.getElementById('eventList');
+        
+        try {
+            console.log('Loading events from Supabase...');
+            
+            if (!state.supabase) {
+                throw new Error('Supabase client not initialized');
+            }
 
-                if (error) throw error;
+            // Show loading state
+            if (container) {
+                container.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading events...</p>
+                    </div>
+                `;
+            }
 
-                events = data || [];
+            // Add timeout to prevent infinite loading
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Request timeout - taking too long to load')), 10000);
+            });
+
+            const dataPromise = state.supabase
+                .from('forest_alerts')
+                .select('*')
+                .order('detected_at', { ascending: false })
+                .limit(100);
+
+            const { data, error } = await Promise.race([dataPromise, timeoutPromise]);
+
+            if (error) {
+                console.error('Supabase query error:', error);
+                throw error;
+            }
+
+            console.log('Loaded events:', data?.length || 0);
+            state.events = data || [];
+            
+            if (state.events.length === 0) {
+                showEmptyState('events', 'No events found. Events will appear here when detected.');
+            } else {
                 updateMetrics();
                 renderEvents();
                 updateMap();
-                
-            } catch (error) {
-                console.error('Error loading events:', error);
-                showError('Failed to load events');
             }
+            
+        } catch (error) {
+            console.error('Error loading events:', error);
+            showEmptyState('events', `Unable to load events: ${error.message}`);
+        } finally {
+            state.isLoading = false;
+        }
+    }
+
+    // Show empty state
+    function showEmptyState(type, message) {
+        const containers = {
+            events: 'eventList',
+            sensors: 'sensorsGrid',
+            blockchain: 'transactionsList',
+            analytics: 'eventsByTypeChart'
+        };
+
+        const containerId = containers[type];
+        if (!containerId) return;
+
+        const container = document.getElementById(containerId);
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        <div style="font-size: 3em; margin-bottom: 16px;">📊</div>
+                        <h3 style="margin-bottom: 8px; color: var(--text-secondary);">No Data Available</h3>
+                        <p style="margin-bottom: 20px;">${message}</p>
+                        <button onclick="retryLoading('${type}')" class="retry-btn" style="
+                            background: var(--primary);
+                            color: white;
+                            border: none;
+                            padding: 8px 16px;
+                            border-radius: 4px;
+                            cursor: pointer;
+                        ">Retry Loading</button>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // Retry loading function
+    function retryLoading(type) {
+        console.log('Retrying loading:', type);
+        
+        switch(type) {
+            case 'events':
+                loadEvents();
+                break;
+            case 'sensors':
+                loadSensorsData();
+                break;
+            case 'blockchain':
+                loadBlockchainData();
+                break;
+            case 'analytics':
+                loadAnalyticsData();
+                break;
+        }
+    }
+
+    // Update system metrics
+    function updateMetrics() {
+        const totalEventsEl = document.getElementById('totalEvents');
+        const activeHubsEl = document.getElementById('activeHubs');
+        const avgConfidenceEl = document.getElementById('avgConfidence');
+        
+        if (totalEventsEl) totalEventsEl.textContent = state.events.length;
+        
+        const activeHubs = new Set(state.events.map(e => e.hub_id)).size;
+        if (activeHubsEl) activeHubsEl.textContent = activeHubs;
+        
+        const avgConfidence = state.events.length > 0 
+            ? Math.round(state.events.reduce((sum, e) => sum + (e.ml_confidence || 0), 0) / state.events.length)
+            : 0;
+        if (avgConfidenceEl) avgConfidenceEl.textContent = `${avgConfidence}%`;
+    }
+
+    // Render events list
+    function renderEvents() {
+        const container = document.getElementById('eventList');
+        if (!container) return;
+        
+        const filteredEvents = state.currentFilter === 'all' 
+            ? state.events 
+            : state.events.filter(event => event.event_type === state.currentFilter);
+
+        if (filteredEvents.length === 0) {
+            showEmptyState('events', `No ${state.currentFilter === 'all' ? '' : state.currentFilter + ' '}events found.`);
+            return;
         }
 
-        // Subscribe to real-time updates
-        function subscribeToRealtime() {
-            supabase
-                .channel('forest-events')
-                .on('postgres_changes', {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'forest_alerts'
-                }, (payload) => {
-                    events.unshift(payload.new);
-                    updateMetrics();
-                    renderEvents();
-                    addMarkerToMap(payload.new);
-                    
-                    // Update analytics if on that page
-                    if (currentPage === 'analytics') {
-                        loadAnalyticsData();
-                    }
-                })
-                .subscribe();
-        }
-
-        // Update system metrics
-        function updateMetrics() {
-            document.getElementById('totalEvents').textContent = events.length;
+        container.innerHTML = filteredEvents.map(event => {
+            const config = eventConfig[event.event_type] || eventConfig.system;
+            const latitude = event.latitude ? event.latitude.toFixed(4) : 'N/A';
+            const longitude = event.longitude ? event.longitude.toFixed(4) : 'N/A';
             
-            const activeHubs = new Set(events.map(e => e.hub_id)).size;
-            document.getElementById('activeHubs').textContent = activeHubs;
-            
-            const avgConfidence = events.length > 0 
-                ? Math.round(events.reduce((sum, e) => sum + (e.ml_confidence || 0), 0) / events.length)
-                : 0;
-            document.getElementById('avgConfidence').textContent = `${avgConfidence}%`;
-        }
-
-        // Render events list
-        function renderEvents() {
-            const container = document.getElementById('eventList');
-            
-            const filteredEvents = currentFilter === 'all' 
-                ? events 
-                : events.filter(event => event.event_type === currentFilter);
-
-            if (filteredEvents.length === 0) {
-                container.innerHTML = '<div class="loading"><p>No events found</p></div>';
-                return;
-            }
-
-            container.innerHTML = filteredEvents.map(event => `
+            return `
                 <div class="event-item ${event.event_type}" onclick="showEventDetail(${event.id})">
                     <div class="event-header">
-                        <div class="event-type">${eventConfig[event.event_type]?.label || 'Event'}</div>
-                        <div class="event-severity ${event.severity}">${event.severity}</div>
+                        <div class="event-type">${config.label}</div>
+                        <div class="event-severity ${event.severity || 'medium'}">${event.severity || 'unknown'}</div>
                     </div>
                     <div class="event-meta">
-                        <span>Hub ${event.hub_id}</span>
+                        <span>Hub ${event.hub_id || 'Unknown'}</span>
                         <span>${formatTimeAgo(event.detected_at)}</span>
                         ${event.ml_confidence ? `
                             <span class="event-confidence">ML: ${event.ml_confidence}%</span>
                         ` : ''}
                     </div>
                     <div class="event-location">
-                        ${event.latitude?.toFixed(4)}, ${event.longitude?.toFixed(4)}
+                        ${latitude}, ${longitude}
                     </div>
                     <div class="event-meta">
                         <span class="blockchain-badge ${event.blockchain_confirmed ? 'confirmed' : 'pending'}">
@@ -1151,22 +1368,32 @@
                         </span>
                     </div>
                 </div>
-            `).join('');
-        }
+            `;
+        }).join('');
+    }
 
-        // Update map markers
-        function updateMap() {
-            markers.forEach(marker => map.removeLayer(marker));
-            markers = [];
+    // Update map markers
+    function updateMap() {
+        if (!state.map) return;
 
-            events.forEach(event => addMarkerToMap(event));
-        }
+        // Clear existing markers
+        state.markers.forEach(marker => {
+            if (state.map && marker) {
+                state.map.removeLayer(marker);
+            }
+        });
+        state.markers = [];
 
-        function addMarkerToMap(event) {
-            if (!event.latitude || !event.longitude) return;
+        // Add new markers
+        state.events.forEach(event => addMarkerToMap(event));
+    }
 
-            const config = eventConfig[event.event_type] || eventConfig.system;
-            
+    function addMarkerToMap(event) {
+        if (!state.map || !event.latitude || !event.longitude) return;
+
+        const config = eventConfig[event.event_type] || eventConfig.system;
+        
+        try {
             const marker = L.circleMarker([event.latitude, event.longitude], {
                 radius: 8,
                 fillColor: config.color,
@@ -1174,357 +1401,118 @@
                 weight: 2,
                 opacity: 1,
                 fillOpacity: 0.8
-            }).addTo(map);
+            }).addTo(state.map);
 
             marker.bindPopup(`
                 <div style="font-family: system-ui; font-size: 12px;">
                     <strong>${config.label}</strong><br>
-                    Hub: ${event.hub_id}<br>
-                    Severity: ${event.severity}<br>
+                    Hub: ${event.hub_id || 'Unknown'}<br>
+                    Severity: ${event.severity || 'unknown'}<br>
                     ${formatDateTime(event.detected_at)}
                 </div>
             `);
 
             marker.on('click', () => showEventDetail(event.id));
-            markers.push(marker);
+            state.markers.push(marker);
+        } catch (error) {
+            console.error('Error adding marker to map:', error);
         }
+    }
 
-        // Analytics functions
-        async function loadAnalyticsData() {
-            // Get filtered events based on time window
-            const filteredEvents = filterEventsByTimeWindow(events, currentTimeWindow);
-            
-            // Update stats
-            document.getElementById('totalEventsAnalytics').textContent = filteredEvents.length;
-            document.getElementById('criticalEvents').textContent = 
-                filteredEvents.filter(e => e.severity === 'critical').length;
-            
-            // Update stat labels to reflect time window
-            const timeWindowLabel = getTimeWindowLabel(currentTimeWindow);
-            document.getElementById('totalEventsLabel').textContent = timeWindowLabel;
-            document.getElementById('criticalEventsLabel').textContent = timeWindowLabel;
-            
-            // Update all chart titles to reflect time window
-            document.getElementById('eventsByTypeTitle').textContent = `Events by Type (${timeWindowLabel})`;
-            document.getElementById('eventsTimelineTitle').textContent = `Events Timeline (${timeWindowLabel})`;
-            document.getElementById('hubPerformanceTitle').textContent = `Hub Performance (${timeWindowLabel})`;
-            document.getElementById('severityDistributionTitle').textContent = `Severity Distribution (${timeWindowLabel})`;
-            
-            // Create charts with filtered data
-            createEventsByTypeChart(filteredEvents);
-            createEventsTimelineChart(filteredEvents);
-            createHubPerformanceChart(filteredEvents);
-            createSeverityChart(filteredEvents);
-        }
+    // Sensor data loading with empty state
+    async function loadSensorsData() {
+        const container = document.getElementById('sensorsGrid');
         
-        // Helper function to filter events by time window
-        function filterEventsByTimeWindow(events, window) {
-            const now = new Date();
-            let startDate;
+        try {
+            console.log('Loading sensor data...');
             
-            switch(window) {
-                case '24h':
-                    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                    break;
-                case '7d':
-                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    break;
-                case '30d':
-                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    break;
-                case '1y':
-                    startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-                    break;
-                default:
-                    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            if (!container) {
+                console.error('Sensors grid container not found');
+                return;
             }
-            
-            return events.filter(event => new Date(event.detected_at) > startDate);
-        }
-        
-        // Helper function to get time window label
-        function getTimeWindowLabel(window) {
-            switch(window) {
-                case '24h': return '24h';
-                case '7d': return '7d';
-                case '30d': return '30d';
-                case '1y': return '1y';
-                default: return '24h';
-            }
-        }
-        
-        function createEventsByTypeChart(filteredEvents) {
-            const ctx = document.getElementById('eventsByTypeChart').getContext('2d');
-            const eventCounts = {};
-            
-            filteredEvents.forEach(event => {
-                eventCounts[event.event_type] = (eventCounts[event.event_type] || 0) + 1;
-            });
-            
-            // Destroy existing chart if it exists
-            if (window.eventsByTypeChart) {
-                window.eventsByTypeChart.destroy();
-            }
-            
-            window.eventsByTypeChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(eventCounts).map(key => eventConfig[key]?.label || key),
-                    datasets: [{
-                        data: Object.values(eventCounts),
-                        backgroundColor: Object.keys(eventCounts).map(key => eventConfig[key]?.color || '#666')
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { color: '#e2e8f0' }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function createEventsTimelineChart(filteredEvents) {
-            const ctx = document.getElementById('eventsTimelineChart').getContext('2d');
-            
-            // Create timeline data based on the selected time window
-            let labels, data;
-            
-            if (currentTimeWindow === '24h') {
-                // Hourly data for 24 hours
-                labels = [];
-                data = [];
-                for (let i = 23; i >= 0; i--) {
-                    const hour = new Date(Date.now() - i * 60 * 60 * 1000);
-                    labels.push(`${hour.getHours()}:00`);
-                    const hourStart = new Date(hour);
-                    hourStart.setMinutes(0, 0, 0);
-                    const hourEnd = new Date(hourStart);
-                    hourEnd.setHours(hourEnd.getHours() + 1);
-                    const count = filteredEvents.filter(e => {
-                        const eventTime = new Date(e.detected_at);
-                        return eventTime >= hourStart && eventTime < hourEnd;
-                    }).length;
-                    data.push(count);
-                }
-            } else if (currentTimeWindow === '7d') {
-                // Daily data for 7 days
-                labels = [];
-                data = [];
-                for (let i = 6; i >= 0; i--) {
-                    const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-                    labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
-                    const dayStart = new Date(date);
-                    dayStart.setHours(0, 0, 0, 0);
-                    const dayEnd = new Date(dayStart);
-                    dayEnd.setDate(dayEnd.getDate() + 1);
-                    const count = filteredEvents.filter(e => {
-                        const eventTime = new Date(e.detected_at);
-                        return eventTime >= dayStart && eventTime < dayEnd;
-                    }).length;
-                    data.push(count);
-                }
-            } else {
-                // For longer periods, show weekly data
-                labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-                data = [0, 0, 0, 0];
-                
-                const periodStart = new Date();
-                if (currentTimeWindow === '30d') {
-                    periodStart.setDate(periodStart.getDate() - 30);
-                } else if (currentTimeWindow === '1y') {
-                    periodStart.setDate(periodStart.getDate() - 365);
-                }
-                
-                filteredEvents.forEach(event => {
-                    const eventTime = new Date(event.detected_at);
-                    const weeksAgo = Math.floor((new Date() - eventTime) / (7 * 24 * 60 * 60 * 1000));
-                    if (weeksAgo >= 0 && weeksAgo < 4) {
-                        data[3 - weeksAgo]++;
-                    }
-                });
-            }
-            
-            // Destroy existing chart if it exists
-            if (window.eventsTimelineChart) {
-                window.eventsTimelineChart.destroy();
-            }
-            
-            window.eventsTimelineChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Events',
-                        data: data,
-                        borderColor: '#059669',
-                        backgroundColor: 'rgba(5, 150, 105, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: 'rgba(255,255,255,0.1)' },
-                            ticks: { color: '#94a3b8' }
-                        },
-                        x: {
-                            grid: { color: 'rgba(255,255,255,0.1)' },
-                            ticks: { color: '#94a3b8' }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function createHubPerformanceChart(filteredEvents) {
-            const ctx = document.getElementById('hubPerformanceChart').getContext('2d');
-            const hubEvents = {};
-            
-            filteredEvents.forEach(event => {
-                hubEvents[event.hub_id] = (hubEvents[event.hub_id] || 0) + 1;
-            });
-            
-            // Destroy existing chart if it exists
-            if (window.hubPerformanceChart) {
-                window.hubPerformanceChart.destroy();
-            }
-            
-            window.hubPerformanceChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: Object.keys(hubEvents),
-                    datasets: [{
-                        label: 'Events per Hub',
-                        data: Object.values(hubEvents),
-                        backgroundColor: '#059669'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: 'rgba(255,255,255,0.1)' },
-                            ticks: { color: '#94a3b8' }
-                        },
-                        x: {
-                            grid: { color: 'rgba(255,255,255,0.1)' },
-                            ticks: { color: '#94a3b8' }
-                        }
-                    }
-                }
-            });
-        }
-        
-        function createSeverityChart(filteredEvents) {
-            const ctx = document.getElementById('severityChart').getContext('2d');
-            const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
-            
-            filteredEvents.forEach(event => {
-                if (severityCounts.hasOwnProperty(event.severity)) {
-                    severityCounts[event.severity]++;
-                }
-            });
-            
-            // Destroy existing chart if it exists
-            if (window.severityChart) {
-                window.severityChart.destroy();
-            }
-            
-            window.severityChart = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: ['Critical', 'High', 'Medium', 'Low'],
-                    datasets: [{
-                        data: Object.values(severityCounts),
-                        backgroundColor: ['#dc2626', '#ea580c', '#d97706', '#65a30d']
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { color: '#e2e8f0' }
-                        }
-                    }
-                }
-            });
-        }
 
-        // Sensor management functions
-        async function loadSensorsData() {
-            try {
-                const { data: hubs, error } = await supabase
-                    .from('forest_hubs')
-                    .select('*')
-                    .order('hub_id');
+            // Show loading state
+            container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading sensor data...</p></div>';
 
-                if (error) throw error;
+            if (!state.supabase) {
+                throw new Error('Supabase client not initialized');
+            }
 
-                const container = document.getElementById('sensorsGrid');
-                if (hubs.length === 0) {
-                    container.innerHTML = '<div class="loading"><p>No sensors found</p></div>';
-                    return;
+            const { data, error } = await state.supabase
+                .from('sensor_readings')
+                .select('*')
+                .order('timestamp', { ascending: false })
+                .limit(50);
+
+            if (error) {
+                console.error('Supabase sensor data error:', error);
+                throw error;
+            }
+
+            console.log('Loaded sensor readings:', data?.length || 0);
+
+            if (!data || data.length === 0) {
+                showEmptyState('sensors', 'No sensor data available. Sensor readings will appear here when available.');
+                return;
+            }
+
+            // Group readings by sensor type
+            const sensorGroups = {};
+            data.forEach(reading => {
+                if (!sensorGroups[reading.sensor_type]) {
+                    sensorGroups[reading.sensor_type] = [];
                 }
+                sensorGroups[reading.sensor_type].push(reading);
+            });
 
-                container.innerHTML = hubs.map(hub => `
+            container.innerHTML = Object.entries(sensorGroups).map(([sensorType, readings]) => {
+                const latestReading = readings[0];
+                return `
                     <div class="sensor-card">
                         <div class="sensor-header">
-                            <div class="sensor-name">${hub.name || hub.hub_id}</div>
-                            <div class="sensor-status ${hub.status}">${hub.status}</div>
+                            <h3>${sensorType.toUpperCase()} Sensor</h3>
+                            <span class="sensor-count">${readings.length} readings</span>
                         </div>
-                        <div class="sensor-details">
-                            <div class="sensor-detail">
-                                <span class="sensor-detail-label">Hub ID</span>
-                                <span class="sensor-detail-value">${hub.hub_id}</span>
-                            </div>
-                            <div class="sensor-detail">
-                                <span class="sensor-detail-label">Location</span>
-                                <span class="sensor-detail-value">${hub.latitude?.toFixed(4)}, ${hub.longitude?.toFixed(4)}</span>
-                            </div>
-                            <div class="sensor-detail">
-                                <span class="sensor-detail-label">Battery</span>
-                                <span class="sensor-detail-value">${hub.battery_level || 'N/A'}%</span>
-                            </div>
-                            <div class="sensor-detail">
-                                <span class="sensor-detail-label">Signal</span>
-                                <span class="sensor-detail-value">${hub.signal_rssi || 'N/A'} dBm</span>
-                            </div>
-                            <div class="sensor-detail">
-                                <span class="sensor-detail-label">Last Seen</span>
-                                <span class="sensor-detail-value">${hub.last_seen ? formatTimeAgo(hub.last_seen) : 'Never'}</span>
-                            </div>
-                            <div class="sensor-detail">
-                                <span class="sensor-detail-label">Installed</span>
-                                <span class="sensor-detail-value">${hub.installed_at ? formatDateTime(hub.installed_at) : 'N/A'}</span>
-                            </div>
+                        <div class="sensor-readings">
+                            ${readings.slice(0, 5).map(reading => `
+                                <div class="sensor-reading">
+                                    <div class="reading-value">${reading.value || 'N/A'}</div>
+                                    <div class="reading-time">${formatTimeAgo(reading.timestamp)}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="sensor-meta">
+                            <span>Last reading: ${formatDateTime(latestReading.timestamp)}</span>
                         </div>
                     </div>
-                `).join('');
+                `;
+            }).join('');
 
-            } catch (error) {
-                console.error('Error loading sensors:', error);
-                document.getElementById('sensorsGrid').innerHTML = '<div class="loading"><p>Error loading sensors</p></div>';
-            }
+        } catch (error) {
+            console.error('Error loading sensors:', error);
+            showEmptyState('sensors', `Unable to load sensor data: ${error.message}`);
         }
+    }
 
-        // Blockchain functions
-        async function loadBlockchainData() {
-            const container = document.getElementById('transactionsList');
+    // Blockchain data loading with empty state
+    async function loadBlockchainData() {
+        const container = document.getElementById('transactionsList');
+        
+        try {
+            console.log('Loading blockchain data...');
             
+            if (!container) {
+                return;
+            }
+
+            // Show loading state
+            container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading blockchain data...</p></div>';
+
             // Filter events with blockchain data
-            const blockchainEvents = events.filter(event => event.blockchain_hash || event.blockchain_tx);
+            const blockchainEvents = state.events.filter(event => event.blockchain_hash || event.blockchain_tx);
             
             if (blockchainEvents.length === 0) {
-                container.innerHTML = '<div class="loading"><p>No blockchain transactions found</p></div>';
+                showEmptyState('blockchain', 'No blockchain transactions found. Transactions will appear here when events are verified.');
                 return;
             }
 
@@ -1568,205 +1556,323 @@
                     </div>
                 </div>
             `).join('');
+
+        } catch (error) {
+            console.error('Error loading blockchain data:', error);
+            showEmptyState('blockchain', `Unable to load blockchain data: ${error.message}`);
         }
+    }
 
-        // Show event detail panel
-        function showEventDetail(eventId) {
-            const event = events.find(e => e.id === eventId);
-            if (!event) return;
+    // Analytics data loading
+    function loadAnalyticsData() {
+        console.log('Loading analytics data...');
+        // This would be implemented with actual chart rendering
+        showEmptyState('analytics', 'Analytics charts will be displayed here when data is available.');
+    }
 
-            const config = eventConfig[event.event_type] || eventConfig.system;
-            const panel = document.getElementById('detailPanel');
-            
-            panel.innerHTML = `
-                <div class="detail-header">
-                    <button class="detail-close" onclick="closeDetailPanel()">×</button>
-                    <h2>${config.label} Event</h2>
-                    <div class="event-severity ${event.severity}">${event.severity}</div>
-                </div>
-                
-                <div class="detail-section">
-                    <h3>Event Information</h3>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <span class="detail-label">Hub ID</span>
-                            <span class="detail-value">${event.hub_id}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Event Type</span>
-                            <span class="detail-value">${config.label}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Detected</span>
-                            <span class="detail-value">${formatDateTime(event.detected_at)}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Received</span>
-                            <span class="detail-value">${formatDateTime(event.received_at)}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="detail-section">
-                    <h3>Location Data</h3>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <span class="detail-label">Latitude</span>
-                            <span class="detail-value">${event.latitude?.toFixed(6)}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Longitude</span>
-                            <span class="detail-value">${event.longitude?.toFixed(6)}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                ${event.sensor_data && Object.keys(event.sensor_data).length > 0 ? `
-                <div class="detail-section">
-                    <h3>Sensor Readings</h3>
-                    <div class="sensor-grid">
-                        ${Object.entries(event.sensor_data).map(([key, value]) => `
-                            <div class="sensor-item">
-                                <div class="sensor-value">${value}</div>
-                                <div class="sensor-unit">${key.toUpperCase()}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                ` : ''}
-                
-                <div class="detail-section">
-                    <h3>System Data</h3>
-                    <div class="detail-grid">
-                        ${event.ml_confidence ? `
-                        <div class="detail-item">
-                            <span class="detail-label">ML Confidence</span>
-                            <span class="detail-value">${event.ml_confidence}%</span>
-                        </div>
-                        ` : ''}
-                        <div class="detail-item">
-                            <span class="detail-label">Battery Level</span>
-                            <span class="detail-value">${event.battery_level}%</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Signal RSSI</span>
-                            <span class="detail-value">${event.signal_rssi} dBm</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="detail-section">
-                    <h3>Blockchain Verification</h3>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <span class="detail-label">Status</span>
-                            <span class="detail-value">${event.blockchain_confirmed ? 'Confirmed' : 'Pending'}</span>
-                        </div>
-                        ${event.blockchain_hash ? `
-                        <div class="detail-item">
-                            <span class="detail-label">Hash</span>
-                            <span class="detail-value text-xs">${event.blockchain_hash.substring(0, 24)}...</span>
-                        </div>
-                        ` : ''}
-                        ${event.blockchain_tx ? `
-                        <div class="detail-item">
-                            <span class="detail-label">Transaction</span>
-                            <span class="detail-value text-xs">${event.blockchain_tx.substring(0, 24)}...</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-            
-            panel.classList.add('show');
-        }
-
-        function closeDetailPanel() {
-            document.getElementById('detailPanel').classList.remove('show');
-        }
-
-        // Utility functions
-        function formatTimeAgo(timestamp) {
-            const seconds = Math.floor((new Date() - new Date(timestamp)) / 1000);
-            if (seconds < 60) return 'Just now';
-            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-            return `${Math.floor(seconds / 86400)}d ago`;
-        }
-
-        function formatDateTime(timestamp) {
-            return new Date(timestamp).toLocaleString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-
-        function resetView() {
-            map.setView([0.35, 34.85], 12);
-        }
-
-        function locateHubs() {
-            const searchTerm = document.getElementById('searchInput').value.trim();
-            if (searchTerm) {
-                const coords = searchTerm.split(',').map(coord => parseFloat(coord.trim()));
-                if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-                    map.setView([coords[0], coords[1]], 14);
-                } else {
-                    const hubEvents = events.filter(event => 
-                        event.hub_id.toLowerCase().includes(searchTerm.toLowerCase())
-                    );
-                    if (hubEvents.length > 0) {
-                        const firstEvent = hubEvents[0];
-                        map.setView([firstEvent.latitude, firstEvent.longitude], 14);
-                    } else {
-                        alert('Hub not found. Try searching by hub ID (e.g., KAK-01) or coordinates (lat,lng)');
-                    }
-                }
+    // Demo mode fallback
+    function initializeDemoMode() {
+        console.log('🔄 Starting in demo mode with sample data...');
+        
+        // Load sample events
+        state.events = [
+            {
+                id: 1,
+                event_type: 'fire',
+                hub_id: 'KAK-01',
+                severity: 'critical',
+                latitude: 0.35,
+                longitude: 34.85,
+                detected_at: new Date().toISOString(),
+                ml_confidence: 95,
+                blockchain_confirmed: true,
+                battery_level: 85,
+                signal_rssi: -65
+            },
+            {
+                id: 2,
+                event_type: 'chainsaw',
+                hub_id: 'KAK-02', 
+                severity: 'high',
+                latitude: 0.36,
+                longitude: 34.86,
+                detected_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+                ml_confidence: 87,
+                blockchain_confirmed: false,
+                battery_level: 92,
+                signal_rssi: -72
             }
+        ];
+        
+        updateMetrics();
+        renderEvents();
+        updateMap();
+        
+        // Update UI to show demo mode
+        const header = document.querySelector('.header .logo');
+        if (header) {
+            const demoBadge = document.createElement('span');
+            demoBadge.textContent = 'DEMO MODE';
+            demoBadge.style.cssText = 'background: #dc2626; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; margin-left: 10px;';
+            header.appendChild(demoBadge);
         }
+        
+        showNotification('Running in demo mode - using sample data', 'warning');
+    }
 
-        function showError(message) {
-            const container = document.getElementById('eventList');
-            container.innerHTML = `<div class="loading"><p>${message}</p></div>`;
-        }
-
-        // Event listeners
-        function setupEventListeners() {
-            // Event filter tabs
-            document.querySelectorAll('.event-tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    document.querySelectorAll('.event-tab').forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    currentFilter = this.dataset.filter;
-                    renderEvents();
-                });
+    // Event listeners - FIXED
+    function setupEventListeners() {
+        console.log('Setting up event listeners...');
+        
+        // Event filter tabs
+        document.querySelectorAll('.event-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.event-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                state.currentFilter = this.dataset.filter;
+                renderEvents();
             });
-            
-            // Time window buttons
-            document.querySelectorAll('.time-window-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.time-window-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    currentTimeWindow = this.dataset.window;
-                    if (currentPage === 'analytics') {
-                        loadAnalyticsData();
-                    }
-                });
+        });
+        
+        // Time window buttons
+        document.querySelectorAll('.time-window-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.time-window-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                state.currentTimeWindow = this.dataset.window;
+                if (state.currentPage === 'analytics') {
+                    loadAnalyticsData();
+                }
             });
-            
-            // Search input enter key
-            document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        });
+        
+        // Search input enter key
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     locateHubs();
                 }
             });
         }
+        
+        // Map control buttons
+        const resetViewBtn = document.getElementById('resetViewBtn');
+        if (resetViewBtn) {
+            resetViewBtn.addEventListener('click', resetView);
+        }
+        
+        const locateHubsBtn = document.getElementById('locateHubsBtn');
+        if (locateHubsBtn) {
+            locateHubsBtn.addEventListener('click', locateHubs);
+        }
+        
+        console.log('✅ Event listeners setup complete');
+    }
 
-        // Initialize the application
+    // Real-time subscriptions
+    function subscribeToRealtime() {
+        if (!state.supabase) {
+            console.error('Supabase client not available for real-time subscription');
+            return;
+        }
+
+        try {
+            state.supabase
+                .channel('forest-events')
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'forest_alerts'
+                }, (payload) => {
+                    console.log('New event received:', payload.new);
+                    state.events.unshift(payload.new);
+                    updateMetrics();
+                    renderEvents();
+                    addMarkerToMap(payload.new);
+                    
+                    // Update analytics if on that page
+                    if (state.currentPage === 'analytics') {
+                        loadAnalyticsData();
+                    }
+                })
+                .subscribe((status) => {
+                    console.log('Real-time subscription status:', status);
+                });
+        } catch (error) {
+            console.error('Failed to subscribe to real-time updates:', error);
+        }
+    }
+
+    function subscribeToSensorUpdates() {
+        if (!state.supabase) {
+            console.error('Supabase client not available for sensor updates');
+            return;
+        }
+
+        try {
+            state.supabase
+                .channel('sensor-readings')
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'sensor_readings'
+                }, (payload) => {
+                    console.log('New sensor reading:', payload.new);
+                    
+                    // Refresh sensor data if on sensors page
+                    if (state.currentPage === 'sensors') {
+                        loadSensorsData();
+                    }
+                })
+                .subscribe((status) => {
+                    console.log('Sensor updates subscription status:', status);
+                });
+        } catch (error) {
+            console.error('Failed to subscribe to sensor updates:', error);
+        }
+    }
+
+    // Utility functions
+    function formatTimeAgo(timestamp) {
+        const seconds = Math.floor((new Date() - new Date(timestamp)) / 1000);
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
+    }
+
+    function formatDateTime(timestamp) {
+        return new Date(timestamp).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    function resetView() {
+        if (state.map) {
+            state.map.setView([0.35, 34.85], 12);
+        }
+    }
+
+    function locateHubs() {
+        const searchTerm = document.getElementById('searchInput').value.trim();
+        if (searchTerm && state.map) {
+            const coords = searchTerm.split(',').map(coord => parseFloat(coord.trim()));
+            if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                state.map.setView([coords[0], coords[1]], 14);
+            } else {
+                const hubEvents = state.events.filter(event => 
+                    event.hub_id && event.hub_id.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+                if (hubEvents.length > 0) {
+                    const firstEvent = hubEvents[0];
+                    state.map.setView([firstEvent.latitude, firstEvent.longitude], 14);
+                } else {
+                    alert('Hub not found. Try searching by hub ID (e.g., KAK-01) or coordinates (lat,lng)');
+                }
+            }
+        }
+    }
+
+    function showError(message) {
+        console.error('UI Error:', message);
+        const container = document.getElementById('eventList');
+        if (container) {
+            container.innerHTML = `<div class="loading-error">${message}</div>`;
+        }
+    }
+
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span class="notification-message">${message}</span>
+                <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, 5000);
+    }
+
+    // Make functions globally available
+    window.showEventDetail = function(eventId) {
+        const event = state.events.find(e => e.id === eventId);
+        if (!event) return;
+
+        const config = eventConfig[event.event_type] || eventConfig.system;
+        const panel = document.getElementById('detailPanel');
+        
+        if (!panel) return;
+
+        panel.innerHTML = `
+            <div class="detail-header">
+                <button class="detail-close" onclick="closeDetailPanel()">×</button>
+                <h2>${config.label} Event</h2>
+                <div class="event-severity ${event.severity || 'medium'}">${event.severity || 'unknown'}</div>
+            </div>
+            
+            <div class="detail-section">
+                <h3>Event Information</h3>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Hub ID</span>
+                        <span class="detail-value">${event.hub_id || 'Unknown'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Event Type</span>
+                        <span class="detail-value">${config.label}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Detected</span>
+                        <span class="detail-value">${formatDateTime(event.detected_at)}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h3>Location Data</h3>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">Latitude</span>
+                        <span class="detail-value">${event.latitude?.toFixed(6) || 'N/A'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Longitude</span>
+                        <span class="detail-value">${event.longitude?.toFixed(6) || 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        panel.classList.add('show');
+    };
+
+    window.closeDetailPanel = function() {
+        const panel = document.getElementById('detailPanel');
+        if (panel) {
+            panel.classList.remove('show');
+        }
+    };
+
+    window.retryLoading = retryLoading;
+
+    // Initialize when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log(' DOM loaded, initializing application...');
         initialize();
-    </script>
+    });
+
+</script>
 </body>
 </html>
