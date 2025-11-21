@@ -2,6 +2,7 @@
 // MSITU BORA - KAKAMEGA FOREST MONITORING BACKEND
 // ============================================================
 // Raspberry Pi Pico W → MQTT → Backend → Supabase + Blockchain
+// Sensor Data: Temperature, Humidity, Vibration, Smoke, Fire
 // ============================================================
 
 require('dotenv').config();
@@ -16,10 +17,10 @@ const crypto = require('crypto');
 const config = {
     mqtt: {
         broker: process.env.MQTT_BROKER || 'your-cluster.hivemq.cloud',
-        port: parseInt(process.env.MQTT_PORT) || 8883,
+        port: parseInt(process.env.MQTT_PORT) || 0,
         username: process.env.MQTT_USERNAME,
         password: process.env.MQTT_PASSWORD,
-        topics: ['kakamega/#', 'forest/#', 'alerts/#'] // Forest alert topics
+        topics: ['topic/temp', 'topic/hum', 'topic/vibration', 'topic/smoke', 'topic/fire'] // Sensor data topics
     },
     
     supabase: {
@@ -129,10 +130,11 @@ app.use(express.static('public'));
 
 const mqttOptions = {
     host: config.mqtt.broker,
-    port: config.mqtt.port,
-    protocol: 'mqtts',
+    port: config.mqtt.port > 0 ? config.mqtt.port : 8883, // Use 8883 as default for SSL
+    protocol: config.mqtt.port === 0 ? 'mqtts' : (config.mqtt.port === 8883 ? 'mqtts' : 'mqtt'),
     username: config.mqtt.username,
     password: config.mqtt.password,
+    clientId: process.env.MQTT_CLIENT_ID || 'MsituBoraBackend',
     keepalive: 60,
     reconnectPeriod: 5000,
     clean: true
@@ -162,6 +164,9 @@ mqttClient.on('connect', () => {
     console.log('\n' + '='.repeat(60));
     console.log(' SYSTEM READY - Monitoring Kakamega Forest');
     console.log('='.repeat(60) + '\n');
+    console.log(' Listening for sensor data on topics:');
+    config.mqtt.topics.forEach(topic => console.log(`  - ${topic}`));
+    console.log();
 });
 
 mqttClient.on('error', (error) => {
@@ -177,6 +182,15 @@ mqttClient.on('reconnect', () => {
 mqttClient.on('message', async (topic, message) => {
     try {
         eventCount++;
+        
+        // Handle sensor data topics
+        if (topic === 'topic/temp' || topic === 'topic/hum' || topic === 'topic/vibration' || 
+            topic === 'topic/smoke' || topic === 'topic/fire') {
+            await processSensorData(topic, message.toString());
+            return;
+        }
+        
+        // Handle legacy alert format
         const event = JSON.parse(message.toString());
         
         // Determine if this is a hub status update or alert
@@ -284,6 +298,57 @@ async function processForestAlert(event, topic) {
     }
 }
 
+// ============== PROCESS SENSOR DATA ==============
+
+async function processSensorData(topic, message) {
+    const startTime = Date.now();
+    
+    console.log('\n' + '='.repeat(60));
+    console.log(` SENSOR DATA #${eventCount}`);
+    console.log('='.repeat(60));
+    
+    try {
+        // Parse sensor data
+        let sensorValue;
+        try {
+            sensorValue = JSON.parse(message);
+        } catch {
+            // If not JSON, treat as plain value
+            sensorValue = message;
+        }
+        
+        console.log(` Topic: ${topic}`);
+        console.log(` Value: ${typeof sensorValue === 'object' ? JSON.stringify(sensorValue) : sensorValue}`);
+        
+        // Extract sensor type from topic
+        const sensorType = topic.replace('topic/', '');
+        
+        // Create sensor reading record
+        const sensorReading = {
+            sensor_type: sensorType,
+            value: typeof sensorValue === 'object' ? sensorValue.value || sensorValue.data || JSON.stringify(sensorValue) : sensorValue,
+            raw_message: typeof sensorValue === 'object' ? JSON.stringify(sensorValue) : sensorValue,
+            timestamp: new Date().toISOString(),
+            received_at: new Date().toISOString()
+        };
+        
+        // Store in Supabase
+        console.log(' Storing in Supabase...');
+        const supabaseResult = await storeSensorReading(sensorReading);
+        console.log(` Stored (ID: ${supabaseResult.id})`);
+        
+        // Check for alert conditions
+        await checkSensorAlerts(sensorReading);
+        
+        const processingTime = Date.now() - startTime;
+        console.log(`  Processing: ${processingTime}ms`);
+        console.log('='.repeat(60) + '\n');
+        
+    } catch (error) {
+        console.error(' Sensor data processing failed:', error.message);
+    }
+}
+
 // ============== NORMALIZE EVENT FORMAT ==============
 
 function normalizeForestEvent(event, topic) {
@@ -348,6 +413,84 @@ async function storeForestAlert(alert) {
     } catch (error) {
         console.error(' Supabase error:', error.message);
         throw error;
+    }
+}
+
+async function storeSensorReading(reading) {
+    try {
+        const readingRecord = {
+            sensor_type: reading.sensor_type,
+            value: reading.value,
+            raw_message: reading.raw_message,
+            timestamp: reading.timestamp,
+            received_at: reading.received_at
+        };
+        
+        const { data, error } = await supabase
+            .from('sensor_readings')
+            .insert([readingRecord])
+            .select()
+            .single();
+        
+        if (error) throw error;
+        
+        return data;
+        
+    } catch (error) {
+        console.error(' Supabase sensor reading error:', error.message);
+        throw error;
+    }
+}
+
+async function checkSensorAlerts(reading) {
+    try {
+        // Define threshold values for alerts
+        const thresholds = {
+            temp: { max: 40, min: -10 }, // Temperature in Celsius
+            hum: { max: 90, min: 10 },   // Humidity in percentage
+            vibration: { max: 100 },     // Vibration intensity
+            smoke: { max: 200 },         // Smoke concentration
+            fire: { max: 1 }             // Fire detection (binary)
+        };
+        
+        const sensorType = reading.sensor_type;
+        const value = parseFloat(reading.value);
+        
+        // Skip if value is not a number or sensor type has no thresholds
+        if (isNaN(value) || !thresholds[sensorType]) {
+            return;
+        }
+        
+        const threshold = thresholds[sensorType];
+        let alertTriggered = false;
+        let alertMessage = '';
+        
+        // Check thresholds
+        if (threshold.max !== undefined && value > threshold.max) {
+            alertTriggered = true;
+            alertMessage = `${sensorType.toUpperCase()} reading (${value}) exceeded maximum threshold (${threshold.max})`;
+        } else if (threshold.min !== undefined && value < threshold.min) {
+            alertTriggered = true;
+            alertMessage = `${sensorType.toUpperCase()} reading (${value}) below minimum threshold (${threshold.min})`;
+        }
+        
+        // If alert triggered, create a forest alert
+        if (alertTriggered) {
+            const alertEvent = {
+                hubId: 'SENSOR_NETWORK',
+                eventType: sensorType,
+                severity: value > threshold.max * 1.5 || value < threshold.min * 1.5 ? 'critical' : 'high',
+                message: alertMessage,
+                sensorData: { [sensorType]: value },
+                timestamp: reading.timestamp
+            };
+            
+            console.log(`⚠️  Sensor Alert: ${alertMessage}`);
+            await processForestAlert(alertEvent, `topic/${sensorType}/alert`);
+        }
+        
+    } catch (error) {
+        console.error(' Sensor alert checking failed:', error.message);
     }
 }
 
@@ -518,6 +661,17 @@ app.get('/health', async (req, res) => {
         }
     }
     
+    // Get sensor readings count
+    let sensorReadingsCount = 0;
+    try {
+        const { count, error } = await supabase
+            .from('sensor_readings')
+            .select('*', { count: 'exact', head: true });
+        if (!error) sensorReadingsCount = count;
+    } catch (error) {
+        console.error('Failed to get sensor readings count:', error.message);
+    }
+    
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
@@ -528,7 +682,8 @@ app.get('/health', async (req, res) => {
         },
         stats: {
             eventsProcessed: eventCount,
-            activeHubs: hubStatuses.size
+            activeHubs: hubStatuses.size,
+            sensorReadings: sensorReadingsCount
         }
     });
 });
@@ -587,11 +742,35 @@ app.get('/api/stats', async (req, res) => {
             .select('*', { count: 'exact', head: true })
             .gte('detected_at', yesterday);
         
+        // Get sensor data stats
+        const { count: totalSensorReadings } = await supabase
+            .from('sensor_readings')
+            .select('*', { count: 'exact', head: true });
+        
+        const { data: sensorTypes } = await supabase
+            .from('sensor_readings')
+            .select('sensor_type');
+        
+        const sensorTypeCounts = sensorTypes.reduce((acc, item) => {
+            acc[item.sensor_type] = (acc[item.sensor_type] || 0) + 1;
+            return acc;
+        }, {});
+        
+        const { count: recentSensorReadings } = await supabase
+            .from('sensor_readings')
+            .select('*', { count: 'exact', head: true })
+            .gte('timestamp', yesterday);
+        
         res.json({
             total: totalEvents,
             last24Hours: last24h,
             byType: typeCounts,
-            processedThisSession: eventCount
+            processedThisSession: eventCount,
+            sensors: {
+                total: totalSensorReadings,
+                last24Hours: recentSensorReadings,
+                byType: sensorTypeCounts
+            }
         });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -617,6 +796,88 @@ app.post('/api/events/test', async (req, res) => {
     }
 });
 
+app.get('/api/sensors/recent', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        
+        const { data, error } = await supabase
+            .from('sensor_readings')
+            .select('*')
+            .order('timestamp', { ascending: false })
+            .limit(limit);
+        
+        if (error) throw error;
+        
+        res.json({ success: true, count: data.length, readings: data });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/sensors/:type', async (req, res) => {
+    try {
+        const sensorType = req.params.type;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        
+        const { data, error } = await supabase
+            .from('sensor_readings')
+            .select('*')
+            .eq('sensor_type', sensorType)
+            .order('timestamp', { ascending: false })
+            .limit(limit);
+        
+        if (error) throw error;
+        
+        res.json({ success: true, count: data.length, readings: data });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/sensors/test', async (req, res) => {
+    try {
+        const sensorTypes = ['temp', 'hum', 'vibration', 'smoke', 'fire'];
+        const sensorType = req.body.sensorType || sensorTypes[Math.floor(Math.random() * sensorTypes.length)];
+        
+        // Generate random sensor value based on type
+        let value;
+        switch (sensorType) {
+            case 'temp':
+                value = (Math.random() * 50 - 10).toFixed(2); // -10 to 40
+                break;
+            case 'hum':
+                value = (Math.random() * 100).toFixed(2); // 0 to 100
+                break;
+            case 'vibration':
+                value = (Math.random() * 150).toFixed(2); // 0 to 150
+                break;
+            case 'smoke':
+                value = (Math.random() * 300).toFixed(2); // 0 to 300
+                break;
+            case 'fire':
+                value = Math.random() > 0.9 ? 1 : 0; // 10% chance of fire detection
+                break;
+            default:
+                value = Math.random().toFixed(2);
+        }
+        
+        const testReading = {
+            sensor_type: sensorType,
+            value: value,
+            raw_message: value,
+            timestamp: new Date().toISOString(),
+            received_at: new Date().toISOString()
+        };
+        
+        // Store in database
+        const result = await storeSensorReading(testReading);
+        
+        res.json({ success: true, message: 'Test sensor reading stored', reading: testReading, id: result.id });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/', (req, res) => {
     res.redirect('/index.html');
 });
@@ -630,6 +891,7 @@ const server = app.listen(config.server.port, () => {
     console.log(` Dashboard: http://localhost:${config.server.port}`);
     console.log(` Health: http://localhost:${config.server.port}/health`);
     console.log(` Stats: http://localhost:${config.server.port}/api/stats`);
+    console.log(` Sensor Readings: http://localhost:${config.server.port}/api/sensors/recent`);
     console.log('='.repeat(60) + '\n');
 });
 
