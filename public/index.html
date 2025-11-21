@@ -389,7 +389,7 @@
 
         .event-item.fire { border-left-color: var(--critical); }
         .event-item.chainsaw { border-left-color: var(--high); }
-        .event-item['tree-fall'] { border-left-color: var(--medium); }
+        .event-item.tree-fall { border-left-color: var(--medium); }
         .event-item.smoke { border-left-color: var(--low); }
         .event-item.system { border-left-color: var(--primary); }
 
@@ -773,6 +773,26 @@
 
         .text-sm { font-size: 0.85em; }
         .text-xs { font-size: 0.75em; }
+        
+        .time-window-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background: var(--bg-dark);
+            color: var(--text-secondary);
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .time-window-btn:hover {
+            background: var(--border);
+        }
+        
+        .time-window-btn.active {
+            background: var(--primary);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -865,14 +885,24 @@
                         <p class="content-subtitle">Comprehensive insights and performance metrics</p>
                     </div>
                     <div class="content-body">
+                        <!-- Time Window Controls -->
+                        <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
+                            <div style="display: flex; gap: 8px; background: var(--bg-card); padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
+                                <button class="time-window-btn active" data-window="24h">24 Hours</button>
+                                <button class="time-window-btn" data-window="7d">7 Days</button>
+                                <button class="time-window-btn" data-window="30d">30 Days</button>
+                                <button class="time-window-btn" data-window="1y">1 Year</button>
+                            </div>
+                        </div>
+                        
                         <div class="stats-grid">
                             <div class="stat-card">
                                 <div class="stat-value" id="totalEventsAnalytics">0</div>
-                                <div class="stat-label">Total Events (24h)</div>
+                                <div class="stat-label">Total Events (<span id="totalEventsLabel">24h</span>)</div>
                             </div>
                             <div class="stat-card">
                                 <div class="stat-value" id="criticalEvents">0</div>
-                                <div class="stat-label">Critical Events</div>
+                                <div class="stat-label">Critical Events (<span id="criticalEventsLabel">24h</span>)</div>
                             </div>
                             <div class="stat-card">
                                 <div class="stat-value" id="avgResponseTime">0m</div>
@@ -886,19 +916,19 @@
 
                         <div class="analytics-grid">
                             <div class="chart-container">
-                                <div class="chart-title">Events by Type</div>
+                                <div class="chart-title" id="eventsByTypeTitle">Events by Type</div>
                                 <canvas id="eventsByTypeChart"></canvas>
                             </div>
                             <div class="chart-container">
-                                <div class="chart-title">Events Timeline (24h)</div>
+                                <div class="chart-title" id="eventsTimelineTitle">Events Timeline</div>
                                 <canvas id="eventsTimelineChart"></canvas>
                             </div>
                             <div class="chart-container">
-                                <div class="chart-title">Hub Performance</div>
+                                <div class="chart-title" id="hubPerformanceTitle">Hub Performance</div>
                                 <canvas id="hubPerformanceChart"></canvas>
                             </div>
                             <div class="chart-container">
-                                <div class="chart-title">Severity Distribution</div>
+                                <div class="chart-title" id="severityDistributionTitle">Severity Distribution</div>
                                 <canvas id="severityChart"></canvas>
                             </div>
                         </div>
@@ -969,6 +999,7 @@
         let markers = [];
         let currentFilter = 'all';
         let currentPage = 'map';
+        let currentTimeWindow = '24h'; // Default time window
 
         // Event type configurations
         const eventConfig = {
@@ -1160,31 +1191,82 @@
 
         // Analytics functions
         async function loadAnalyticsData() {
-            // Update stats
-            const last24hEvents = events.filter(e => 
-                new Date(e.detected_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
-            );
+            // Get filtered events based on time window
+            const filteredEvents = filterEventsByTimeWindow(events, currentTimeWindow);
             
-            document.getElementById('totalEventsAnalytics').textContent = last24hEvents.length;
+            // Update stats
+            document.getElementById('totalEventsAnalytics').textContent = filteredEvents.length;
             document.getElementById('criticalEvents').textContent = 
-                last24hEvents.filter(e => e.severity === 'critical').length;
-
-            // Create charts
-            createEventsByTypeChart();
-            createEventsTimelineChart();
-            createHubPerformanceChart();
-            createSeverityChart();
+                filteredEvents.filter(e => e.severity === 'critical').length;
+            
+            // Update stat labels to reflect time window
+            const timeWindowLabel = getTimeWindowLabel(currentTimeWindow);
+            document.getElementById('totalEventsLabel').textContent = timeWindowLabel;
+            document.getElementById('criticalEventsLabel').textContent = timeWindowLabel;
+            
+            // Update all chart titles to reflect time window
+            document.getElementById('eventsByTypeTitle').textContent = `Events by Type (${timeWindowLabel})`;
+            document.getElementById('eventsTimelineTitle').textContent = `Events Timeline (${timeWindowLabel})`;
+            document.getElementById('hubPerformanceTitle').textContent = `Hub Performance (${timeWindowLabel})`;
+            document.getElementById('severityDistributionTitle').textContent = `Severity Distribution (${timeWindowLabel})`;
+            
+            // Create charts with filtered data
+            createEventsByTypeChart(filteredEvents);
+            createEventsTimelineChart(filteredEvents);
+            createHubPerformanceChart(filteredEvents);
+            createSeverityChart(filteredEvents);
         }
-
-        function createEventsByTypeChart() {
+        
+        // Helper function to filter events by time window
+        function filterEventsByTimeWindow(events, window) {
+            const now = new Date();
+            let startDate;
+            
+            switch(window) {
+                case '24h':
+                    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                    break;
+                case '7d':
+                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case '30d':
+                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                case '1y':
+                    startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            }
+            
+            return events.filter(event => new Date(event.detected_at) > startDate);
+        }
+        
+        // Helper function to get time window label
+        function getTimeWindowLabel(window) {
+            switch(window) {
+                case '24h': return '24h';
+                case '7d': return '7d';
+                case '30d': return '30d';
+                case '1y': return '1y';
+                default: return '24h';
+            }
+        }
+        
+        function createEventsByTypeChart(filteredEvents) {
             const ctx = document.getElementById('eventsByTypeChart').getContext('2d');
             const eventCounts = {};
             
-            events.forEach(event => {
+            filteredEvents.forEach(event => {
                 eventCounts[event.event_type] = (eventCounts[event.event_type] || 0) + 1;
             });
-
-            new Chart(ctx, {
+            
+            // Destroy existing chart if it exists
+            if (window.eventsByTypeChart) {
+                window.eventsByTypeChart.destroy();
+            }
+            
+            window.eventsByTypeChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: Object.keys(eventCounts).map(key => eventConfig[key]?.label || key),
@@ -1204,25 +1286,84 @@
                 }
             });
         }
-
-        function createEventsTimelineChart() {
+        
+        function createEventsTimelineChart(filteredEvents) {
             const ctx = document.getElementById('eventsTimelineChart').getContext('2d');
-            // Simplified timeline data - in real app, you'd aggregate by hour
-            const last6Hours = events.filter(e => 
-                new Date(e.detected_at) > new Date(Date.now() - 6 * 60 * 60 * 1000)
-            ).length;
-
-            new Chart(ctx, {
+            
+            // Create timeline data based on the selected time window
+            let labels, data;
+            
+            if (currentTimeWindow === '24h') {
+                // Hourly data for 24 hours
+                labels = [];
+                data = [];
+                for (let i = 23; i >= 0; i--) {
+                    const hour = new Date(Date.now() - i * 60 * 60 * 1000);
+                    labels.push(`${hour.getHours()}:00`);
+                    const hourStart = new Date(hour);
+                    hourStart.setMinutes(0, 0, 0);
+                    const hourEnd = new Date(hourStart);
+                    hourEnd.setHours(hourEnd.getHours() + 1);
+                    const count = filteredEvents.filter(e => {
+                        const eventTime = new Date(e.detected_at);
+                        return eventTime >= hourStart && eventTime < hourEnd;
+                    }).length;
+                    data.push(count);
+                }
+            } else if (currentTimeWindow === '7d') {
+                // Daily data for 7 days
+                labels = [];
+                data = [];
+                for (let i = 6; i >= 0; i--) {
+                    const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+                    labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
+                    const dayStart = new Date(date);
+                    dayStart.setHours(0, 0, 0, 0);
+                    const dayEnd = new Date(dayStart);
+                    dayEnd.setDate(dayEnd.getDate() + 1);
+                    const count = filteredEvents.filter(e => {
+                        const eventTime = new Date(e.detected_at);
+                        return eventTime >= dayStart && eventTime < dayEnd;
+                    }).length;
+                    data.push(count);
+                }
+            } else {
+                // For longer periods, show weekly data
+                labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+                data = [0, 0, 0, 0];
+                
+                const periodStart = new Date();
+                if (currentTimeWindow === '30d') {
+                    periodStart.setDate(periodStart.getDate() - 30);
+                } else if (currentTimeWindow === '1y') {
+                    periodStart.setDate(periodStart.getDate() - 365);
+                }
+                
+                filteredEvents.forEach(event => {
+                    const eventTime = new Date(event.detected_at);
+                    const weeksAgo = Math.floor((new Date() - eventTime) / (7 * 24 * 60 * 60 * 1000));
+                    if (weeksAgo >= 0 && weeksAgo < 4) {
+                        data[3 - weeksAgo]++;
+                    }
+                });
+            }
+            
+            // Destroy existing chart if it exists
+            if (window.eventsTimelineChart) {
+                window.eventsTimelineChart.destroy();
+            }
+            
+            window.eventsTimelineChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: ['6h ago', '5h ago', '4h ago', '3h ago', '2h ago', '1h ago', 'Now'],
+                    labels: labels,
                     datasets: [{
                         label: 'Events',
-                        data: [Math.floor(last6Hours * 0.1), Math.floor(last6Hours * 0.2), Math.floor(last6Hours * 0.4), 
-                              Math.floor(last6Hours * 0.7), Math.floor(last6Hours * 0.9), Math.floor(last6Hours * 0.95), last6Hours],
+                        data: data,
                         borderColor: '#059669',
                         backgroundColor: 'rgba(5, 150, 105, 0.1)',
-                        tension: 0.4
+                        tension: 0.4,
+                        fill: true
                     }]
                 },
                 options: {
@@ -1241,16 +1382,21 @@
                 }
             });
         }
-
-        function createHubPerformanceChart() {
+        
+        function createHubPerformanceChart(filteredEvents) {
             const ctx = document.getElementById('hubPerformanceChart').getContext('2d');
             const hubEvents = {};
             
-            events.forEach(event => {
+            filteredEvents.forEach(event => {
                 hubEvents[event.hub_id] = (hubEvents[event.hub_id] || 0) + 1;
             });
-
-            new Chart(ctx, {
+            
+            // Destroy existing chart if it exists
+            if (window.hubPerformanceChart) {
+                window.hubPerformanceChart.destroy();
+            }
+            
+            window.hubPerformanceChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: Object.keys(hubEvents),
@@ -1276,18 +1422,23 @@
                 }
             });
         }
-
-        function createSeverityChart() {
+        
+        function createSeverityChart(filteredEvents) {
             const ctx = document.getElementById('severityChart').getContext('2d');
             const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
             
-            events.forEach(event => {
+            filteredEvents.forEach(event => {
                 if (severityCounts.hasOwnProperty(event.severity)) {
                     severityCounts[event.severity]++;
                 }
             });
-
-            new Chart(ctx, {
+            
+            // Destroy existing chart if it exists
+            if (window.severityChart) {
+                window.severityChart.destroy();
+            }
+            
+            window.severityChart = new Chart(ctx, {
                 type: 'pie',
                 data: {
                     labels: ['Critical', 'High', 'Medium', 'Low'],
@@ -1593,7 +1744,19 @@
                     renderEvents();
                 });
             });
-
+            
+            // Time window buttons
+            document.querySelectorAll('.time-window-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.time-window-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentTimeWindow = this.dataset.window;
+                    if (currentPage === 'analytics') {
+                        loadAnalyticsData();
+                    }
+                });
+            });
+            
             // Search input enter key
             document.getElementById('searchInput').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
