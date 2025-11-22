@@ -927,6 +927,16 @@ app.get('/', (req, res) => {
     res.redirect('/index.html');
 });
 
+// Antugrow authentication endpoint
+app.get('/api/antugrow-auth', (req, res) => {
+    // In a production environment, you would implement proper authentication
+    // For now, we're providing the API key from environment variables
+    res.json({
+        apiKey: config.africastalking.apiKey || process.env.AT_API_KEY,
+        accessToken: null
+    });
+});
+
 // ============== START SERVER ==============
 
 const server = app.listen(config.server.port, () => {
