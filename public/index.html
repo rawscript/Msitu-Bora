@@ -3056,7 +3056,11 @@
                 document.querySelectorAll('.time-window-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 state.currentTimeWindow = this.dataset.window;
+                // Update both events and analytics when time window changes
                 loadEvents();
+                if (state.currentPage === 'analytics') {
+                    loadAnalyticsData();
+                }
             });
         });
         
