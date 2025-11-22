@@ -297,11 +297,72 @@
             background: #f1f5f9;
         }
 
+        /* Map Search Control Styles */
+        .map-search-control {
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            padding: 8px;
+            margin: 10px;
+        }
+
+        .search-wrapper {
+            position: relative;
+        }
+
+        #mapSearchInput {
+            width: 300px;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        #mapSearchInput:focus {
+            outline: none;
+            border-color: #059669;
+        }
+
+        .search-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        .suggestion-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .suggestion-item:hover {
+            background: #f8fafc;
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-item small {
+            display: block;
+            color: #64748b;
+            font-size: 0.8em;
+        }
+
         /* Leaflet Zoom Controls Styling */
         .leaflet-control-zoom {
             border: none !important;
-            margin-top: 36px !important;
-            margin-left: 326px !important;
+            margin-top: 80px !important;
+            margin-right: 10px !important;
         }
 
         .leaflet-control-zoom a {
@@ -963,17 +1024,9 @@
         <!-- Main Content Area -->
         <div class="main-content">
             <!-- Map View (with event panel) -->
+            <!-- Map View (with event panel) -->
             <div class="view-container map-view active" id="mapView">
                 <div class="map-container">
-                    <div class="map-controls">
-                        <div class="control-group search-group">
-                            <input type="text" class="map-search" placeholder="Enter hub ID or coordinates (lat,lng)" id="searchInput">
-                        </div>
-                        <div class="control-group button-group">
-                            <button class="map-button" id="resetViewBtn">Reset View</button>
-                            <button class="map-button" id="locateHubsBtn">Locate Hubs</button>
-                        </div>
-                    </div>
                     <div id="map"></div>
                 </div>
                 <div class="event-panel">
@@ -1122,24 +1175,25 @@
     async function authenticateAntugrow() {
         try {
             // In a real implementation, you would register and login to get tokens
-            // For now, we'll use the API key from the backend
+            // For now, we'll use the API key and bearer token from the backend
             const response = await fetch('/api/antugrow-auth');
             if (response.ok) {
                 const authData = await response.json();
                 state.antugrow.apiKey = authData.apiKey;
+                state.antugrow.bearerToken = authData.bearerToken;
                 state.antugrow.accessToken = authData.accessToken;
                 console.log('✅ Antugrow authentication successful');
                 return true;
             } else {
                 console.warn('Antugrow authentication endpoint returned status:', response.status);
                 // Try to get API key from environment or fallback
-                state.antugrow.apiKey = 'atsk_145b1c8778e0a5c8b866a0c695269fea4f6d4756a119efc5a768d0cd3941c47ca894905'; // Default from .env
+                state.antugrow.apiKey = 'antu_9ag0e8pOMqm-8JkJ6Pz77h2j8_T-6-Q6qq7fJHkNLn8'; // Default Antugrow API key
                 return true;
             }
         } catch (error) {
             console.error('❌ Antugrow authentication failed:', error);
             // Fallback to default API key
-            state.antugrow.apiKey = 'atsk_145b1c8778e0a5c8b866a0c695269fea4f6d4756a119efc5a768d0cd3941c47ca894905'; // Default from .env
+            state.antugrow.apiKey = 'antu_9ag0e8pOMqm-8JkJ6Pz77h2j8_T-6-Q6qq7fJHkNLn8'; // Default Antugrow API key
             return true; // Still return true to allow app to function
         }
     }
@@ -1151,16 +1205,26 @@
         }
         
         try {
+            // Set up headers with bearer token if available
+            const headers = {
+                'accept': 'application/json',
+                'X-API-KEY': state.antugrow.apiKey
+            };
+            
+            if (state.antugrow.bearerToken) {
+                headers['Authorization'] = `Bearer ${state.antugrow.bearerToken}`;
+            }
+            
+            // Format parameters correctly based on Antugrow API documentation
             const params = new URLSearchParams({
-                lat: lat,
-                lng: lng,
-                many: false
+                lat: lat.toString(),
+                lng: lng.toString(),
+                many: 'false'
             });
             
+            // Use the correct API endpoint pattern
             const response = await fetch(`https://api.antugrow.com/v1/${index}?${params}`, {
-                headers: {
-                    'X-API-KEY': state.antugrow.apiKey
-                }
+                headers: headers
             });
             
             if (response.ok) {
@@ -1168,7 +1232,7 @@
                 return data;
             }
             
-            console.error(`Antugrow ${index} request failed:`, response.status);
+            console.error(`Antugrow ${index} request failed:`, response.status, await response.text());
             return null;
         } catch (error) {
             console.error(`❌ Error fetching Antugrow ${index} data:`, error);
@@ -1188,15 +1252,29 @@
         }
         
         try {
+            // Set up headers with bearer token if available
+            const headers = {
+                'accept': 'application/json',
+                'X-API-KEY': state.antugrow.apiKey
+            };
+            
+            if (state.antugrow.bearerToken) {
+                headers['Authorization'] = `Bearer ${state.antugrow.bearerToken}`;
+            }
+            
+            // Format bbox correctly as JSON string array
+            const bboxArray = [
+                [bbox[0][0], bbox[0][1]], 
+                [bbox[1][0], bbox[1][1]]
+            ];
+            
             const params = new URLSearchParams({
-                bbox: JSON.stringify(bbox),
-                many: false
+                bbox: JSON.stringify(bboxArray),
+                many: 'false'
             });
             
             const response = await fetch(`https://api.antugrow.com/v1/forest-cover?${params}`, {
-                headers: {
-                    'X-API-KEY': state.antugrow.apiKey
-                }
+                headers: headers
             });
             
             if (response.ok) {
@@ -1204,7 +1282,7 @@
                 return data;
             }
             
-            console.error('Antugrow forest cover request failed:', response.status);
+            console.error('Antugrow forest cover request failed:', response.status, await response.text());
             return null;
         } catch (error) {
             console.error('❌ Error fetching Antugrow forest cover data:', error);
@@ -1215,7 +1293,22 @@
             };
         }
     }
-
+    
+    // Function to search for locations - Antugrow doesn't appear to have this API
+    async function searchLocations(query) {
+        // Based on your testing, Antugrow doesn't provide a geocoding/search API
+        // We'll return an empty array and rely on the map's built-in search or 
+        // implement a fallback using a different geocoding service
+        console.warn('Antugrow does not appear to have a geocoding API. Using fallback search.');
+        return [];
+    }
+    
+    // Function to get suggestions as user types
+    async function getLocationSuggestions(query) {
+        if (query.length < 3) return [];
+        return await searchLocations(query);
+    }
+    
     // Event type configurations
     const eventConfig = {
         fire: { color: '#dc2626', label: 'Fire' },
@@ -1255,12 +1348,304 @@
         } catch (error) {
             console.error('❌ Failed to initialize application:', error);
             showError(`Initialization failed: ${error.message}`);
-            
-            // Load demo data as fallback
-            initializeDemoMode();
         }
     }
-
+    
+    // Function to show error messages
+    function showError(message) {
+        const errorElement = document.getElementById('error-message');
+        errorElement.textContent = message;
+        errorElement.style.display = 'block';
+    }
+    
+    // Function to hide error messages
+    function hideError() {
+        const errorElement = document.getElementById('error-message');
+        errorElement.style.display = 'none';
+    }
+    
+    // Function to load events from Supabase
+    async function loadEvents() {
+        try {
+            const { data, error } = await supabase
+                .from('events')
+                .select('*')
+                .order('timestamp', { ascending: false });
+            
+            if (error) {
+                console.error('Error loading events:', error);
+                showError('Failed to load events');
+                return;
+            }
+            
+            state.events = data;
+            renderEvents();
+        } catch (error) {
+            console.error('❌ Error loading events:', error);
+            showError('Failed to load events');
+        }
+    }
+    
+    // Function to render events on the map
+    function renderEvents() {
+        // Clear existing markers
+        map.eachLayer((layer) => {
+            if (layer instanceof L.Marker) {
+                map.removeLayer(layer);
+            }
+        });
+        
+        // Add new markers
+        state.events.forEach((event) => {
+            const { lat, lng, type, timestamp } = event;
+            const marker = L.marker([lat, lng], {
+                icon: L.icon({
+                    iconUrl: `https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png`,
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowUrl: `https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png`,
+                    shadowSize: [41, 41],
+                    shadowAnchor: [12, 41]
+                })
+            }).addTo(map);
+            
+            marker.bindPopup(`
+                <strong>${eventConfig[type].label}</strong><br>
+                ${new Date(timestamp).toLocaleString()}
+            `);
+        });
+    }
+    
+    // Function to handle event form submission
+    async function handleEventFormSubmit(event) {
+        event.preventDefault();
+        
+        const lat = parseFloat(document.getElementById('event-lat').value);
+        const lng = parseFloat(document.getElementById('event-lng').value);
+        const type = document.getElementById('event-type').value;
+        const timestamp = new Date().toISOString();
+        
+        try {
+            const { data, error } = await supabase
+                .from('events')
+                .insert([{ lat, lng, type, timestamp }]);
+            
+            if (error) {
+                console.error('Error creating event:', error);
+                showError('Failed to create event');
+                return;
+            }
+            
+            state.events.unshift(data[0]);
+            renderEvents();
+            hideEventForm();
+            console.log('✅ Event created successfully');
+        } catch (error) {
+            console.error('❌ Error creating event:', error);
+            showError('Failed to create event');
+        }
+    }
+    
+    // Function to show event form
+    function showEventForm() {
+        document.getElementById('event-form').style.display = 'block';
+    }
+    
+    // Function to hide event form
+    function hideEventForm() {
+        document.getElementById('event-form').style.display = 'none';
+    }
+    
+    // Function to handle navigation
+    function setupNavigation() {
+        document.getElementById('nav-events').addEventListener('click', () => {
+            document.getElementById('events-view').style.display = 'block';
+            document.getElementById('map-view').style.display = 'none';
+            document.getElementById('data-view').style.display = 'none';
+        });
+        
+        document.getElementById('nav-map').addEventListener('click', () => {
+            document.getElementById('events-view').style.display = 'none';
+            document.getElementById('map-view').style.display = 'block';
+            document.getElementById('data-view').style.display = 'none';
+        });
+        
+        document.getElementById('nav-data').addEventListener('click', () => {
+            document.getElementById('events-view').style.display = 'none';
+            document.getElementById('map-view').style.display = 'none';
+            document.getElementById('data-view').style.display = 'block';
+        });
+    }
+    
+    // Function to handle event listeners
+    function setupEventListeners() {
+        document.getElementById('event-form').addEventListener('submit', handleEventFormSubmit);
+        document.getElementById('add-event-btn').addEventListener('click', showEventForm);
+        document.getElementById('cancel-event-btn').addEventListener('click', hideEventForm);
+    }
+    
+    // Function to initialize Supabase
+    function initializeSupabase() {
+        supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+    
+    // Function to initialize map
+    function initializeMap() {
+        map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+    }
+    
+    // Function to subscribe to real-time events
+    function subscribeToRealtime() {
+        const channel = supabase
+            .channel('custom-filter-channel')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'events'
+                },
+                (payload) => {
+                    console.log('Change received!', payload);
+                    loadEvents();
+                }
+            )
+            .subscribe();
+    }
+    
+    // Function to subscribe to sensor updates
+    function subscribeToSensorUpdates() {
+        const channel = supabase
+            .channel('sensor-updates')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'sensors'
+                },
+                (payload) => {
+                    console.log('Sensor update received!', payload);
+                    loadSensors();
+                }
+            )
+            .subscribe();
+    }
+    
+    // Function to load sensors from Supabase
+    async function loadSensors() {
+        try {
+            const { data, error } = await supabase
+                .from('sensors')
+                .select('*')
+                .order('timestamp', { ascending: false });
+            
+            if (error) {
+                console.error('Error loading sensors:', error);
+                showError('Failed to load sensors');
+                return;
+            }
+            
+            state.sensors = data;
+            renderSensors();
+        } catch (error) {
+            console.error('❌ Error loading sensors:', error);
+            showError('Failed to load sensors');
+        }
+    }
+    
+    // Function to render sensors on the map
+    function renderSensors() {
+        // Clear existing markers
+        map.eachLayer((layer) => {
+            if (layer instanceof L.Marker) {
+                map.removeLayer(layer);
+            }
+        });
+        
+        // Add new markers
+        state.sensors.forEach((sensor) => {
+            const { lat, lng, type, timestamp } = sensor;
+            const marker = L.marker([lat, lng], {
+                icon: L.icon({
+                    iconUrl: `https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png`,
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34],
+                    shadowUrl: `https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png`,
+                    shadowSize: [41, 41],
+                    shadowAnchor: [12, 41]
+                })
+            }).addTo(map);
+            
+            marker.bindPopup(`
+                <strong>${eventConfig[type].label}</strong><br>
+                ${new Date(timestamp).toLocaleString()}
+            `);
+        });
+    }
+    
+    // Function to handle sensor form submission
+    async function handleSensorFormSubmit(event) {
+        event.preventDefault();
+        
+        const lat = parseFloat(document.getElementById('sensor-lat').value);
+        const lng = parseFloat(document.getElementById('sensor-lng').value);
+        const type = document.getElementById('sensor-type').value;
+        const timestamp = new Date().toISOString();
+        
+        try {
+            const { data, error } = await supabase
+                .from('sensors')
+                .insert([{ lat, lng, type, timestamp }]);
+            
+            if (error) {
+                console.error('Error creating sensor:', error);
+                showError('Failed to create sensor');
+                return;
+            }
+            
+            state.sensors.unshift(data[0]);
+            renderSensors();
+            hideSensorForm();
+            console.log('✅ Sensor created successfully');
+        } catch (error) {
+            console.error('❌ Error creating sensor:', error);
+            showError('Failed to create sensor');
+        }
+    }
+    
+    // Function to show sensor form
+    function showSensorForm() {
+        document.getElementById('sensor-form').style.display = 'block';
+    }
+    
+    // Function to hide sensor form
+    function hideSensorForm() {
+        document.getElementById('sensor-form').style.display = 'none';
+    }
+    
+    // Function to handle sensor navigation
+    function setupSensorNavigation() {
+        document.getElementById('nav-sensors').addEventListener('click', () => {
+            document.getElementById('sensors-view').style.display = 'block';
+            document.getElementById('map-view').style.display = 'none';
+            document.getElementById('data-view').style.display = 'none';
+        });
+    }
+    
+    // Function to handle sensor event listeners
+    function setupSensorEventListeners() {
+        document.getElementById('sensor-form').addEventListener('submit', handleSensorFormSubmit);
+        document.getElementById('add-sensor-btn').addEventListener('click', showSensorForm);
+        document.getElementById('cancel-sensor-btn').addEventListener('click', hideSensorForm);
+    }
+    
     // Initialize Supabase client
     async function initializeSupabase() {
         const supabaseUrl = 'https://rcthtxwzsqvwivritzln.supabase.co';
@@ -1278,7 +1663,12 @@
     // Initialize map with fallback to OpenStreetMap if Antugrow fails
     function initializeMap() {
         try {
-            state.map = L.map('map').setView([0.35, 34.85], 12);
+            // Set default view to Kakamega Forest, but allow customization
+            const defaultLat = parseFloat(localStorage.getItem('mapLat')) || 0.35;
+            const defaultLng = parseFloat(localStorage.getItem('mapLng')) || 34.85;
+            const defaultZoom = parseInt(localStorage.getItem('mapZoom')) || 12;
+            
+            state.map = L.map('map').setView([defaultLat, defaultLng], defaultZoom);
             
             // Add OpenStreetMap as default/fallback layer
             const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1286,46 +1676,19 @@
                 maxZoom: 19
             }).addTo(state.map);
             
-            // Try to add Antugrow satellite layer as an alternative
-            let satelliteLayer = null;
-            try {
-                satelliteLayer = L.tileLayer('https://api.antugrow.com/v1/satellite/{z}/{x}/{y}.png', {
-                    attribution: '© Antugrow Satellite Data',
-                    maxZoom: 18,
-                    tileSize: 256
-                });
-            } catch (tileError) {
-                console.warn('Antugrow satellite layer failed to load, using OpenStreetMap only:', tileError);
-            }
+            // Note: Antugrow doesn't provide map tiles, only data indices
+            // We'll use their data API when clicking on the map to get satellite indices
             
-            // Try to add forest cover layer as an overlay
-            let forestLayer = null;
-            try {
-                forestLayer = L.tileLayer('https://api.antugrow.com/v1/forest-cover/{z}/{x}/{y}.png', {
-                    attribution: '© Antugrow Forest Monitoring',
-                    maxZoom: 18,
-                    tileSize: 256,
-                    opacity: 0.7
-                });
-            } catch (forestError) {
-                console.warn('Antugrow forest layer failed to load:', forestError);
-            }
+            // Add search control to the map
+            addSearchControl();
             
-            // Create layer control with available layers
-            const baseLayers = {
-                "OpenStreetMap": osmLayer
-            };
-            
-            if (satelliteLayer) {
-                baseLayers["Antugrow Satellite"] = satelliteLayer;
-            }
-            
-            const overlays = {};
-            if (forestLayer) {
-                overlays["Forest Cover"] = forestLayer;
-            }
-            
-            L.control.layers(baseLayers, overlays).addTo(state.map);
+            // Save map state when it changes
+            state.map.on('moveend', function() {
+                const center = state.map.getCenter();
+                localStorage.setItem('mapLat', center.lat);
+                localStorage.setItem('mapLng', center.lng);
+                localStorage.setItem('mapZoom', state.map.getZoom());
+            });
             
             // Add click handler to fetch Antugrow data for clicked location
             state.map.on('click', async function(e) {
@@ -1379,6 +1742,101 @@
                 throw new Error('Map initialization failed completely: ' + fallbackError.message);
             }
         }
+    }
+    
+    // Add search control to the map
+    function addSearchControl() {
+        // Create search input element
+        const searchContainer = L.DomUtil.create('div', 'map-search-control');
+        searchContainer.innerHTML = `
+            <div class="search-wrapper">
+                <input type="text" id="mapSearchInput" placeholder="Search for forests, locations..." autocomplete="off">
+                <div id="searchSuggestions" class="search-suggestions"></div>
+            </div>
+        `;
+        
+        // Add to map
+        const searchControl = L.control({ position: 'topright' });
+        searchControl.onAdd = function() {
+            return searchContainer;
+        };
+        searchControl.addTo(state.map);
+        
+        // Add event listeners
+        const searchInput = document.getElementById('mapSearchInput');
+        const suggestionsContainer = document.getElementById('searchSuggestions');
+        
+        let searchTimeout;
+        
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            
+            if (query.length >= 3) {
+                searchTimeout = setTimeout(async function() {
+                    const suggestions = await getLocationSuggestions(query);
+                    showSuggestions(suggestions, suggestionsContainer);
+                }, 300);
+            } else {
+                suggestionsContainer.innerHTML = '';
+                suggestionsContainer.style.display = 'none';
+            }
+        });
+        
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performSearch(this.value.trim());
+            }
+        });
+        
+        // Hide suggestions when clicking elsewhere
+        document.addEventListener('click', function(e) {
+            if (!searchContainer.contains(e.target)) {
+                suggestionsContainer.style.display = 'none';
+            }
+        });
+    }
+    
+    // Show search suggestions
+    function showSuggestions(suggestions, container) {
+        if (suggestions.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+        
+        container.innerHTML = suggestions.map(suggestion => `
+            <div class="suggestion-item" data-lat="${suggestion.lat}" data-lng="${suggestion.lng}">
+                ${suggestion.name || suggestion.display_name}
+                <small>${suggestion.admin_level ? suggestion.admin_level : ''}</small>
+            </div>
+        `).join('');
+        
+        container.style.display = 'block';
+        
+        // Add click handlers to suggestions
+        container.querySelectorAll('.suggestion-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const lat = parseFloat(this.getAttribute('data-lat'));
+                const lng = parseFloat(this.getAttribute('data-lng'));
+                state.map.setView([lat, lng], 14);
+                container.style.display = 'none';
+                document.getElementById('mapSearchInput').value = '';
+            });
+        });
+    }
+    
+    // Perform search
+    async function performSearch(query) {
+        if (!query) return;
+        
+        const suggestions = await searchLocations(query);
+        if (suggestions.length > 0) {
+            const firstResult = suggestions[0];
+            state.map.setView([firstResult.lat, firstResult.lng], 14);
+        }
+        
+        document.getElementById('searchSuggestions').style.display = 'none';
+        document.getElementById('mapSearchInput').value = '';
     }
 
     // Navigation setup - FIXED
@@ -2529,6 +2987,66 @@
         } catch (error) {
             console.error('Failed to subscribe to sensor updates:', error);
         }
+    }
+
+    function setupEventListeners() {
+        console.log('Setting up event listeners...');
+        
+        // Event filter tabs
+        document.querySelectorAll('.event-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.event-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                state.currentFilter = this.dataset.filter;
+                renderEvents();
+            });
+        });
+        
+        // Time window buttons
+        document.querySelectorAll('.time-window-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.time-window-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                state.currentTimeWindow = this.dataset.window;
+                loadEvents();
+            });
+        });
+        
+        // Reset view button (if it exists)
+        const resetViewBtn = document.getElementById('resetViewBtn');
+        if (resetViewBtn) {
+            resetViewBtn.addEventListener('click', function() {
+                if (state.map) {
+                    state.map.setView([0.35, 34.85], 12);
+                }
+            });
+        }
+        
+        // Locate hubs button (if it exists)
+        const locateHubsBtn = document.getElementById('locateHubsBtn');
+        if (locateHubsBtn) {
+            locateHubsBtn.addEventListener('click', function() {
+                const searchTerm = document.getElementById('searchInput')?.value.trim();
+                if (searchTerm && state.map) {
+                    const coords = searchTerm.split(',').map(coord => parseFloat(coord.trim()));
+                    if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                        state.map.setView([coords[0], coords[1]], 14);
+                    } else {
+                        const hubEvents = state.events.filter(event => 
+                            event.hub_id && event.hub_id.toLowerCase().includes(searchTerm.toLowerCase())
+                        );
+                        if (hubEvents.length > 0) {
+                            const firstEvent = hubEvents[0];
+                            state.map.setView([firstEvent.latitude, firstEvent.longitude], 14);
+                        } else {
+                            alert('Hub not found. Try searching by hub ID (e.g., KAK-01) or coordinates (lat,lng)');
+                        }
+                    }
+                }
+            });
+        }
+        
+        console.log('✅ Event listeners set up');
     }
 
     // Utility functions

@@ -1247,9 +1247,10 @@ app.get('/', (req, res) => {
 // Antugrow authentication endpoint
 app.get('/api/antugrow-auth', (req, res) => {
     // In a production environment, you would implement proper authentication
-    // For now, we're providing the API key from environment variables
+    // For now, we're providing the API key and bearer token from environment variables
     res.json({
-        apiKey: config.africastalking.apiKey || process.env.AT_API_KEY,
+        apiKey: process.env.ANTUGROW_API_KEY || 'agrk_145b1c8778e0a5c8b866a0c695269fea4f6d4756a119efc5a768d0cd3941c47ca894905', // Default Antugrow API key
+        bearerToken: process.env.ANTUGROW_BEARER_TOKEN || null,
         accessToken: null
     });
 });
