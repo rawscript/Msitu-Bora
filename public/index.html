@@ -2205,6 +2205,54 @@
                 console.error('Sensors grid container not found');
                 return;
             }
+            
+            // Add click handler to fetch Antugrow data for clicked location
+            state.map.on('click', async function(e) {
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+                
+                console.log(`Fetching Antugrow data for location: ${lat}, ${lng}`);
+                
+                // Show a temporary marker at the clicked location
+                const clickMarker = L.marker([lat, lng]).addTo(state.map);
+                
+                // Fetch various indices
+                const ndviData = await fetchAntugrowSatelliteData(lat, lng, 'ndvi');
+                const eviData = await fetchAntugrowSatelliteData(lat, lng, 'evi');
+                const ndwiData = await fetchAntugrowSatelliteData(lat, lng, 'ndwi');
+                
+                // Remove the temporary marker after fetching data
+                setTimeout(() => {
+                    state.map.removeLayer(clickMarker);
+                }, 5000);
+                
+                // Create popup with Antugrow data
+                let popupContent = `<div style="font-family: system-ui; font-size: 12px;">`;
+                popupContent += `<strong>Antugrow Satellite Data</strong><br>`;
+                popupContent += `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}<br>`;
+                
+                if (ndviData) {
+                    const ndviValue = typeof ndviData === 'object' ? ndviData.ndvi : ndviData;
+                    const color = ndviValue > 0.5 ? '#059669' : '#dc2626';
+                    popupContent += `NDVI: <span style="color: ${color}">${ndviValue}</span><br>`;
+                }
+                if (eviData) {
+                    const eviValue = typeof eviData === 'object' ? eviData.evi : eviData;
+                    const color = eviValue > 0.5 ? '#059669' : '#dc2626';
+                    popupContent += `EVI: <span style="color: ${color}">${eviValue}</span><br>`;
+                }
+                if (ndwiData) {
+                    const ndwiValue = typeof ndwiData === 'object' ? ndwiData.ndwi : ndwiData;
+                    const color = ndwiValue > 0 ? '#059669' : '#dc2626';
+                    popupContent += `NDWI: <span style="color: ${color}">${ndwiValue}</span><br>`;
+                }
+                
+                popupContent += `</div>`;
+                
+                // Bind popup to the temporary marker
+                clickMarker.bindPopup(popupContent).openPopup();
+            });
+
 
             // Show loading state
             container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading sensor data...</p></div>';
