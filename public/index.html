@@ -852,6 +852,70 @@
             border: 1px solid var(--border);
         }
 
+        /* Analytics Dashboard Styles */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: var(--text-muted);
+        }
+
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .chart-container {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .chart-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 1200px) {
+            .analytics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-container {
+                min-width: 300px;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -859,15 +923,13 @@
         <!-- Header -->
         <div class="header">
             <div class="logo">
-                <h1>Msitu Bora</h1>
-                <span class="text-sm" style="color: var(--text-muted)">Kakamega Forest Monitoring</span>
+                <h1>Msitu Bora - Kakamega Forest Monitoring System</h1>
             </div>
             <div class="system-status">
                 <div class="status-indicator">
                     <div class="status-dot"></div>
                     <span>System Online</span>
                 </div>
-                <span class="text-sm" style="color: var(--text-muted)">Last 24h</span>
             </div>
         </div>
 
@@ -940,12 +1002,12 @@
             <div class="view-container full-view" id="analyticsView">
                 <div class="content-view">
                     <div class="content-header">
-                        <h2>Analytics Dashboard</h2>
-                        <p class="content-subtitle">Comprehensive insights and performance metrics</p>
-                    </div>
-                    <div class="content-body">
-                        <!-- Time Window Controls -->
-                        <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div>
+                                <h2>Analytics Dashboard</h2>
+                                <p class="content-subtitle">Comprehensive insights and performance metrics</p>
+                            </div>
+                            <!-- Time Window Controls -->
                             <div style="display: flex; gap: 8px; background: var(--bg-card); padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
                                 <button class="time-window-btn active" data-window="24h">24 Hours</button>
                                 <button class="time-window-btn" data-window="7d">7 Days</button>
@@ -953,7 +1015,8 @@
                                 <button class="time-window-btn" data-window="1y">1 Year</button>
                             </div>
                         </div>
-                        
+                    </div>
+                    <div class="content-body">
                         <div class="stats-grid">
                             <div class="stat-card">
                                 <div class="stat-value" id="totalEventsAnalytics">0</div>
@@ -1203,12 +1266,8 @@
         const container = document.getElementById('eventList');
         
         try {
-            console.log('Loading events from Supabase...');
+            console.log('🔄 Loading events from backend API...');
             
-            if (!state.supabase) {
-                throw new Error('Supabase client not initialized');
-            }
-
             // Show loading state
             if (container) {
                 container.innerHTML = `
@@ -1224,21 +1283,23 @@
                 setTimeout(() => reject(new Error('Request timeout - taking too long to load')), 10000);
             });
 
-            const dataPromise = state.supabase
-                .from('forest_alerts')
-                .select('*')
-                .order('detected_at', { ascending: false })
-                .limit(100);
-
-            const { data, error } = await Promise.race([dataPromise, timeoutPromise]);
-
-            if (error) {
-                console.error('Supabase query error:', error);
-                throw error;
+            // Fetch from backend API instead of Supabase directly
+            console.log('📡 Fetching events from /api/events...');
+            const response = await fetch('/api/events?limit=100');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log(`✅ Received ${result.count} events from backend API`);
+            
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to fetch events');
             }
 
-            console.log('Loaded events:', data?.length || 0);
-            state.events = data || [];
+            state.events = result.events || [];
+            console.log(`📊 Processed ${state.events.length} events for display`);
             
             if (state.events.length === 0) {
                 showEmptyState('events', 'No events found. Events will appear here when detected.');
@@ -1249,7 +1310,7 @@
             }
             
         } catch (error) {
-            console.error('Error loading events:', error);
+            console.error('❌ Error loading events:', error);
             showEmptyState('events', `Unable to load events: ${error.message}`);
         } finally {
             state.isLoading = false;
@@ -1262,13 +1323,20 @@
             events: 'eventList',
             sensors: 'sensorsGrid',
             blockchain: 'transactionsList',
-            analytics: 'eventsByTypeChart'
+            analytics: 'analyticsView .content-body'
         };
 
         const containerId = containers[type];
         if (!containerId) return;
 
-        const container = document.getElementById(containerId);
+        let container;
+        if (type === 'analytics') {
+            // For analytics, we need to target the content body within the view
+            container = document.querySelector('#analyticsView .content-body');
+        } else {
+            container = document.getElementById(containerId);
+        }
+        
         if (container) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -1424,7 +1492,7 @@
         const container = document.getElementById('sensorsGrid');
         
         try {
-            console.log('Loading sensor data...');
+            console.log('🔄 Loading sensor data from backend API...');
             
             if (!container) {
                 console.error('Sensors grid container not found');
@@ -1434,22 +1502,23 @@
             // Show loading state
             container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading sensor data...</p></div>';
 
-            if (!state.supabase) {
-                throw new Error('Supabase client not initialized');
+            // Fetch from backend API
+            console.log('📡 Fetching sensor data from /api/sensors/recent...');
+            const response = await fetch('/api/sensors/recent?limit=50');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log(`✅ Received ${result.count} sensor readings from backend API`);
+            
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to fetch sensor data');
             }
 
-            const { data, error } = await state.supabase
-                .from('sensor_readings')
-                .select('*')
-                .order('timestamp', { ascending: false })
-                .limit(50);
-
-            if (error) {
-                console.error('Supabase sensor data error:', error);
-                throw error;
-            }
-
-            console.log('Loaded sensor readings:', data?.length || 0);
+            const data = result.readings || [];
+            console.log('📊 Processing sensor readings for display...');
 
             if (!data || data.length === 0) {
                 showEmptyState('sensors', 'No sensor data available. Sensor readings will appear here when available.');
@@ -1488,8 +1557,10 @@
                 `;
             }).join('');
 
+            console.log('✅ Sensor data display updated successfully');
+            
         } catch (error) {
-            console.error('Error loading sensors:', error);
+            console.error('❌ Error loading sensors:', error);
             showEmptyState('sensors', `Unable to load sensor data: ${error.message}`);
         }
     }
@@ -1563,13 +1634,491 @@
         }
     }
 
-    // Analytics data loading
-    function loadAnalyticsData() {
-        console.log('Loading analytics data...');
-        // This would be implemented with actual chart rendering
-        showEmptyState('analytics', 'Analytics charts will be displayed here when data is available.');
+    // Filter events based on time window
+    function filterEventsByTimeWindow(events, timeWindow) {
+        const now = new Date();
+        let startDate = new Date();
+        
+        // Set start date based on time window
+        switch(timeWindow) {
+            case '24h':
+                startDate.setHours(now.getHours() - 24);
+                break;
+            case '7d':
+                startDate.setDate(now.getDate() - 7);
+                break;
+            case '30d':
+                startDate.setDate(now.getDate() - 30);
+                break;
+            case '1y':
+                startDate.setFullYear(now.getFullYear() - 1);
+                break;
+            default:
+                startDate.setHours(now.getHours() - 24);
+        }
+        
+        // Filter events
+        return events.filter(event => {
+            if (!event.detected_at) return false;
+            const eventDate = new Date(event.detected_at);
+            return eventDate >= startDate && eventDate <= now;
+        });
     }
-
+    
+    // Analytics data loading
+    async function loadAnalyticsData() {
+        try {
+            console.log('📊 Loading analytics data...');
+            
+            // Show loading state
+            const containers = ['eventsByTypeChart', 'eventsTimelineChart', 'hubPerformanceChart', 'severityChart'];
+            containers.forEach(id => {
+                const canvas = document.getElementById(id);
+                if (canvas) {
+                    const container = canvas.closest('.chart-container');
+                    if (container) {
+                        container.innerHTML = `
+                            <div class="chart-title">${container.querySelector('.chart-title').textContent}</div>
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                <p>Loading chart data...</p>
+                            </div>
+                        `;
+                    }
+                }
+            });
+            
+            // Get events data and filter by time window
+            const allEvents = state.events || [];
+            const filteredEvents = filterEventsByTimeWindow(allEvents, state.currentTimeWindow);
+            
+            // Update stats
+            updateAnalyticsStats(filteredEvents);
+            
+            // Render charts with a small delay to ensure DOM is ready
+            setTimeout(() => {
+                renderEventsByTypeChart(filteredEvents);
+                renderEventsTimelineChart(filteredEvents);
+                renderHubPerformanceChart(filteredEvents);
+                renderSeverityDistributionChart(filteredEvents);
+            }, 100);
+            
+            console.log('✅ Analytics data loaded successfully');
+            
+        } catch (error) {
+            console.error('❌ Error loading analytics:', error);
+            showEmptyState('analytics', `Unable to load analytics data: ${error.message}`);
+        }
+    }
+    
+    // Store chart instances to properly destroy them
+    const chartInstances = {};
+    
+    function destroyChart(chartId) {
+        if (chartInstances[chartId]) {
+            chartInstances[chartId].destroy();
+            delete chartInstances[chartId];
+        }
+    }
+    
+    function updateAnalyticsStats(events) {
+        const totalEventsEl = document.getElementById('totalEventsAnalytics');
+        const criticalEventsEl = document.getElementById('criticalEvents');
+        const totalEventsLabel = document.getElementById('totalEventsLabel');
+        const criticalEventsLabel = document.getElementById('criticalEventsLabel');
+        
+        if (totalEventsEl) totalEventsEl.textContent = events.length;
+        if (totalEventsLabel) {
+            // Update label based on current time window
+            const timeLabels = {
+                '24h': '24h',
+                '7d': '7d',
+                '30d': '30d',
+                '1y': '1y'
+            };
+            totalEventsLabel.textContent = timeLabels[state.currentTimeWindow] || '24h';
+        }
+        if (criticalEventsEl) {
+            const criticalCount = events.filter(e => e.severity === 'critical').length;
+            criticalEventsEl.textContent = criticalCount;
+        }
+        if (criticalEventsLabel) {
+            // Update label based on current time window
+            const timeLabels = {
+                '24h': '24h',
+                '7d': '7d',
+                '30d': '30d',
+                '1y': '1y'
+            };
+            criticalEventsLabel.textContent = timeLabels[state.currentTimeWindow] || '24h';
+        }
+        
+        // Calculate average response time (mock data for now)
+        const avgResponseTimeEl = document.getElementById('avgResponseTime');
+        if (avgResponseTimeEl) {
+            avgResponseTimeEl.textContent = events.length > 0 ? '2.3m' : '0m';
+        }
+    }
+    
+    function renderEventsByTypeChart(events) {
+        const container = document.querySelector('[id="eventsByTypeTitle"]').closest('.chart-container');
+        if (!container) return;
+        
+        // Destroy existing chart if it exists
+        destroyChart('eventsByTypeChart');
+        
+        // Group events by type
+        const eventTypes = {};
+        events.forEach(event => {
+            const type = event.event_type || 'unknown';
+            eventTypes[type] = (eventTypes[type] || 0) + 1;
+        });
+        
+        // Prepare chart data
+        const labels = Object.keys(eventTypes);
+        const data = Object.values(eventTypes);
+        const backgroundColors = labels.map(type => {
+            const config = eventConfig[type] || eventConfig.system;
+            return config ? config.color : '#6b7280';
+        });
+        
+        container.innerHTML = `
+            <div class="chart-title">Events by Type</div>
+            <div class="chart-wrapper">
+                <canvas id="eventsByTypeChart"></canvas>
+            </div>
+        `;
+        
+        // Render chart
+        const ctx = document.getElementById('eventsByTypeChart').getContext('2d');
+        chartInstances.eventsByTypeChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels.map(type => {
+                    const config = eventConfig[type] || eventConfig.system;
+                    return config ? config.label : type;
+                }),
+                datasets: [{
+                    data: data,
+                    backgroundColor: backgroundColors,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: 'var(--text-primary)',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderEventsTimelineChart(events) {
+        const container = document.querySelector('[id="eventsTimelineTitle"]').closest('.chart-container');
+        if (!container) return;
+        
+        // Destroy existing chart if it exists
+        destroyChart('eventsTimelineChart');
+        
+        // Determine date range based on time window
+        const now = new Date();
+        let startDate = new Date();
+        let interval = 'daily'; // default to daily
+        let label = 'Last 7 Days';
+        
+        switch(state.currentTimeWindow) {
+            case '24h':
+                startDate.setHours(now.getHours() - 24);
+                interval = 'hourly';
+                label = 'Last 24 Hours';
+                break;
+            case '7d':
+                startDate.setDate(now.getDate() - 7);
+                interval = 'daily';
+                label = 'Last 7 Days';
+                break;
+            case '30d':
+                startDate.setDate(now.getDate() - 30);
+                interval = 'daily';
+                label = 'Last 30 Days';
+                break;
+            case '1y':
+                startDate.setFullYear(now.getFullYear() - 1);
+                interval = 'monthly';
+                label = 'Last 12 Months';
+                break;
+            default:
+                startDate.setDate(now.getDate() - 7);
+                interval = 'daily';
+                label = 'Last 7 Days';
+        }
+        
+        const dates = [];
+        const counts = [];
+        
+        if (interval === 'hourly') {
+            // Group by hour for 24h view
+            for (let i = 23; i >= 0; i--) {
+                const date = new Date(now);
+                date.setHours(date.getHours() - i);
+                const hourStr = `${date.toLocaleDateString()} ${date.getHours()}:00`;
+                dates.push(hourStr);
+                counts.push(events.filter(event => {
+                    if (!event.detected_at) return false;
+                    const eventDate = new Date(event.detected_at);
+                    const eventHourStr = `${eventDate.toLocaleDateString()} ${eventDate.getHours()}:00`;
+                    return eventHourStr === hourStr;
+                }).length);
+            }
+        } else if (interval === 'daily') {
+            // Group by day
+            const days = state.currentTimeWindow === '30d' ? 30 : 7;
+            for (let i = days - 1; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                dates.push(dateStr);
+                counts.push(events.filter(event => {
+                    if (!event.detected_at) return false;
+                    const eventDate = new Date(event.detected_at);
+                    return eventDate.toISOString().split('T')[0] === dateStr;
+                }).length);
+            }
+        } else if (interval === 'monthly') {
+            // Group by month for 1 year view
+            for (let i = 11; i >= 0; i--) {
+                const date = new Date(now);
+                date.setMonth(date.getMonth() - i);
+                const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                dates.push(monthStr);
+                counts.push(events.filter(event => {
+                    if (!event.detected_at) return false;
+                    const eventDate = new Date(event.detected_at);
+                    const eventMonthStr = `${eventDate.getFullYear()}-${String(eventDate.getMonth() + 1).padStart(2, '0')}`;
+                    return eventMonthStr === monthStr;
+                }).length);
+            }
+        }
+        
+        container.innerHTML = `
+            <div class="chart-title">Events Timeline (${label})</div>
+            <div class="chart-wrapper">
+                <canvas id="eventsTimelineChart"></canvas>
+            </div>
+        `;
+        
+        // Render chart
+        const ctx = document.getElementById('eventsTimelineChart').getContext('2d');
+        chartInstances.eventsTimelineChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: 'Events',
+                    data: counts,
+                    borderColor: '#059669',
+                    backgroundColor: 'rgba(5, 150, 105, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'var(--border)'
+                        },
+                        ticks: {
+                            color: 'var(--text-muted)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'var(--border)'
+                        },
+                        ticks: {
+                            color: 'var(--text-muted)',
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderHubPerformanceChart(events) {
+        const container = document.querySelector('[id="hubPerformanceTitle"]').closest('.chart-container');
+        if (!container) return;
+        
+        // Destroy existing chart if it exists
+        destroyChart('hubPerformanceChart');
+        
+        // Group events by hub
+        const hubs = {};
+        events.forEach(event => {
+            const hub = event.hub_id || 'Unknown';
+            if (!hubs[hub]) {
+                hubs[hub] = { total: 0, critical: 0 };
+            }
+            hubs[hub].total++;
+            if (event.severity === 'critical') {
+                hubs[hub].critical++;
+            }
+        });
+        
+        // Prepare data for top 5 hubs
+        const hubEntries = Object.entries(hubs)
+            .sort(([,a], [,b]) => b.total - a.total)
+            .slice(0, 5);
+        
+        const labels = hubEntries.map(([hub]) => hub);
+        const totalData = hubEntries.map(([,data]) => data.total);
+        const criticalData = hubEntries.map(([,data]) => data.critical);
+        
+        container.innerHTML = `
+            <div class="chart-title">Top Hubs by Event Count</div>
+            <div class="chart-wrapper">
+                <canvas id="hubPerformanceChart"></canvas>
+            </div>
+        `;
+        
+        // Render chart
+        const ctx = document.getElementById('hubPerformanceChart').getContext('2d');
+        chartInstances.hubPerformanceChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Total Events',
+                        data: totalData,
+                        backgroundColor: '#059669',
+                        borderColor: '#047857',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Critical Events',
+                        data: criticalData,
+                        backgroundColor: '#dc2626',
+                        borderColor: '#b91c1c',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'var(--border)'
+                        },
+                        ticks: {
+                            color: 'var(--text-muted)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'var(--border)'
+                        },
+                        ticks: {
+                            color: 'var(--text-muted)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderSeverityDistributionChart(events) {
+        const container = document.querySelector('[id="severityDistributionTitle"]').closest('.chart-container');
+        if (!container) return;
+        
+        // Destroy existing chart if it exists
+        destroyChart('severityChart');
+        
+        // Count events by severity
+        const severityCounts = {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0
+        };
+        
+        events.forEach(event => {
+            const severity = event.severity || 'medium';
+            if (severityCounts.hasOwnProperty(severity)) {
+                severityCounts[severity]++;
+            }
+        });
+        
+        const labels = Object.keys(severityCounts);
+        const data = Object.values(severityCounts);
+        const backgroundColors = {
+            critical: '#dc2626',
+            high: '#ea580c',
+            medium: '#d97706',
+            low: '#65a30d'
+        };
+        const colors = labels.map(label => backgroundColors[label]);
+        
+        container.innerHTML = `
+            <div class="chart-title">Severity Distribution</div>
+            <div class="chart-wrapper">
+                <canvas id="severityChart"></canvas>
+            </div>
+        `;
+        
+        // Render chart
+        const ctx = document.getElementById('severityChart').getContext('2d');
+        chartInstances.severityChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels.map(severity => severity.charAt(0).toUpperCase() + severity.slice(1)),
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: 'var(--text-primary)',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
     // Demo mode fallback
     function initializeDemoMode() {
         console.log('🔄 Starting in demo mode with sample data...');
@@ -1803,6 +2352,110 @@
                 notification.remove();
             }
         }, 5000);
+    }
+
+    // Test data flow function
+    async function testDataFlow() {
+        try {
+            console.log('🧪 Testing data flow...');
+            
+            // Show notification
+            showNotification('Testing data flow - sending test sensor data', 'info');
+            
+            // Send test sensor data
+            const response = await fetch('/api/sensors/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sensorType: 'temp'
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('✅ Test sensor data sent:', result);
+            
+            showNotification('Test sensor data sent successfully! Check the Sensors tab.', 'success');
+            
+            // Refresh sensor data after a short delay
+            setTimeout(() => {
+                if (state.currentPage === 'sensors') {
+                    loadSensorsData();
+                }
+            }, 2000);
+            
+        } catch (error) {
+            console.error('❌ Error testing data flow:', error);
+            showNotification(`Failed to test data flow: ${error.message}`, 'error');
+        }
+    }
+
+    // Comprehensive data flow verification
+    async function verifyDataFlow() {
+        try {
+            console.log('🔍 Verifying complete data flow...');
+            showNotification('Verifying complete data flow...', 'info');
+            
+            // Check backend connectivity
+            console.log('📡 Checking backend connectivity...');
+            const healthResponse = await fetch('/health');
+            if (!healthResponse.ok) {
+                throw new Error('Backend not responding');
+            }
+            console.log('✅ Backend is responsive');
+            
+            // Check Supabase connectivity through backend
+            console.log('📡 Checking database connectivity...');
+            const statsResponse = await fetch('/api/stats');
+            if (!statsResponse.ok) {
+                throw new Error('Database not accessible');
+            }
+            const stats = await statsResponse.json();
+            console.log('✅ Database is accessible');
+            console.log(`📊 Database stats: ${stats.total} total events, ${stats.sensors.total} sensor readings`);
+            
+            // Check recent events
+            console.log('📡 Checking recent events...');
+            const eventsResponse = await fetch('/api/events?limit=5');
+            if (!eventsResponse.ok) {
+                throw new Error('Events API not responding');
+            }
+            const eventsResult = await eventsResponse.json();
+            console.log(`✅ Events API working: ${eventsResult.count} recent events`);
+            
+            // Check recent sensor readings
+            console.log('📡 Checking recent sensor readings...');
+            const sensorsResponse = await fetch('/api/sensors/recent?limit=5');
+            if (!sensorsResponse.ok) {
+                throw new Error('Sensors API not responding');
+            }
+            const sensorsResult = await sensorsResponse.json();
+            console.log(`✅ Sensors API working: ${sensorsResult.count} recent readings`);
+            
+            // Display summary
+            const summary = `
+                Data Flow Verification Complete:
+                - Backend: ✅ Online
+                - Database: ✅ Connected (${stats.total} events, ${stats.sensors.total} readings)
+                - Events API: ✅ Working (${eventsResult.count} recent events)
+                - Sensors API: ✅ Working (${sensorsResult.count} recent readings)
+            `.trim();
+            
+            console.log('✅ Data flow verification successful');
+            showNotification('Data flow verification successful!', 'success');
+            
+            // Show detailed results in a modal or alert
+            alert(summary);
+            
+        } catch (error) {
+            console.error('❌ Data flow verification failed:', error);
+            showNotification(`Data flow verification failed: ${error.message}`, 'error');
+        }
     }
 
     // Make functions globally available

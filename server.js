@@ -299,7 +299,6 @@ async function processForestAlert(event, topic) {
 }
 
 // ============== PROCESS SENSOR DATA ==============
-
 async function processSensorData(topic, message) {
     const startTime = Date.now();
     
@@ -335,17 +334,50 @@ async function processSensorData(topic, message) {
         // Store in Supabase
         console.log(' Storing in Supabase...');
         const supabaseResult = await storeSensorReading(sensorReading);
-        console.log(` Stored (ID: ${supabaseResult.id})`);
+        console.log(`✅ Supabase storage successful (ID: ${supabaseResult.id})`);
         
         // Check for alert conditions
+        console.log(' Checking for alert conditions...');
         await checkSensorAlerts(sensorReading);
+        console.log('✅ Alert checking completed');
         
         const processingTime = Date.now() - startTime;
-        console.log(`  Processing: ${processingTime}ms`);
+        console.log(`  Processing time: ${processingTime}ms`);
         console.log('='.repeat(60) + '\n');
         
     } catch (error) {
-        console.error(' Sensor data processing failed:', error.message);
+        console.error('❌ Sensor data processing failed:', error.message);
+        console.error('Raw message:', message.toString().substring(0, 200));
+    }
+}
+
+// ============== STORE SENSOR READING ==============
+async function storeSensorReading(reading) {
+    try {
+        console.log(`💾 Storing sensor reading: ${reading.sensor_type} = ${reading.value}`);
+        
+        const readingRecord = {
+            sensor_type: reading.sensor_type,
+            value: reading.value,
+            raw_message: reading.raw_message,
+            timestamp: reading.timestamp,
+            received_at: reading.received_at
+        };
+        
+        const { data, error } = await supabase
+            .from('sensor_readings')
+            .insert([readingRecord])
+            .select()
+            .single();
+        
+        if (error) throw error;
+        
+        console.log(`✅ Sensor reading stored successfully (ID: ${data.id})`);
+        return data;
+        
+    } catch (error) {
+        console.error('❌ Supabase sensor reading error:', error.message);
+        throw error;
     }
 }
 
@@ -416,32 +448,6 @@ async function storeForestAlert(alert) {
     }
 }
 
-async function storeSensorReading(reading) {
-    try {
-        const readingRecord = {
-            sensor_type: reading.sensor_type,
-            value: reading.value,
-            raw_message: reading.raw_message,
-            timestamp: reading.timestamp,
-            received_at: reading.received_at
-        };
-        
-        const { data, error } = await supabase
-            .from('sensor_readings')
-            .insert([readingRecord])
-            .select()
-            .single();
-        
-        if (error) throw error;
-        
-        return data;
-        
-    } catch (error) {
-        console.error(' Supabase sensor reading error:', error.message);
-        throw error;
-    }
-}
-
 async function checkSensorAlerts(reading) {
     try {
         // Define threshold values for alerts
@@ -466,17 +472,27 @@ async function checkSensorAlerts(reading) {
         let alertMessage = '';
         let severity = 'medium';
         
-        // Check thresholds
-        if (threshold.max !== undefined && value > threshold.max) {
-            alertTriggered = true;
-            alertMessage = `${sensorType.toUpperCase()} reading (${value}) exceeded maximum threshold (${threshold.max})`;
-            // Set severity based on how much the threshold is exceeded
-            severity = value > threshold.max * 1.5 ? 'critical' : 'high';
-        } else if (threshold.min !== undefined && value < threshold.min) {
-            alertTriggered = true;
-            alertMessage = `${sensorType.toUpperCase()} reading (${value}) below minimum threshold (${threshold.min})`;
-            // Set severity based on how much the threshold is exceeded
-            severity = value < threshold.min * 1.5 ? 'critical' : 'high';
+        // Special handling for binary sensors (smoke, fire)
+        if (sensorType === 'smoke' || sensorType === 'fire') {
+            // For binary sensors, any detection above threshold triggers an alert
+            if (value >= threshold.max) {
+                alertTriggered = true;
+                alertMessage = sensorType === 'smoke' ? 'Smoke detected' : 'Fire detected';
+                severity = sensorType === 'fire' ? 'critical' : 'high';
+            }
+        } else {
+            // For continuous sensors (temp, hum, vibration), check thresholds
+            if (threshold.max !== undefined && value > threshold.max) {
+                alertTriggered = true;
+                alertMessage = `${sensorType.toUpperCase()} reading (${value}) exceeded maximum threshold (${threshold.max})`;
+                // Set severity based on how much the threshold is exceeded
+                severity = value > threshold.max * 1.5 ? 'critical' : 'high';
+            } else if (threshold.min !== undefined && value < threshold.min) {
+                alertTriggered = true;
+                alertMessage = `${sensorType.toUpperCase()} reading (${value}) below minimum threshold (${threshold.min})`;
+                // Set severity based on how much the threshold is exceeded
+                severity = value < threshold.min * 1.5 ? 'critical' : 'high';
+            }
         }
         
         // If alert triggered, create a forest alert
@@ -693,6 +709,27 @@ app.get('/health', async (req, res) => {
     });
 });
 
+app.get('/api/events', async (req, res) => {
+    try {
+        console.log('📡 API: Fetching forest events...');
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        
+        const { data, error } = await supabase
+            .from('forest_alerts')
+            .select('*')
+            .order('detected_at', { ascending: false })
+            .limit(limit);
+        
+        if (error) throw error;
+        
+        console.log(`✅ API: Returning ${data.length} forest events`);
+        res.json({ success: true, count: data.length, events: data });
+    } catch (error) {
+        console.error('❌ API: Forest events error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/events/recent', async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit) || 50, 100);
@@ -803,6 +840,7 @@ app.post('/api/events/test', async (req, res) => {
 
 app.get('/api/sensors/recent', async (req, res) => {
     try {
+        console.log('📡 API: Fetching recent sensor readings...');
         const limit = Math.min(parseInt(req.query.limit) || 50, 100);
         
         const { data, error } = await supabase
@@ -813,8 +851,10 @@ app.get('/api/sensors/recent', async (req, res) => {
         
         if (error) throw error;
         
+        console.log(`✅ API: Returning ${data.length} sensor readings`);
         res.json({ success: true, count: data.length, readings: data });
     } catch (error) {
+        console.error('❌ API: Sensor readings error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
