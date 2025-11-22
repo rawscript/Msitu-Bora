@@ -12,6 +12,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { ethers } = require('ethers');
 const axios = require('axios');
 const crypto = require('crypto');
+const { Telegraf } = require('telegraf');
 
 // ============== CONFIGURATION ==============
 const config = {
@@ -125,6 +126,322 @@ if (config.blockchain.enabled && config.blockchain.privateKey && config.blockcha
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
+
+// Initialize Telegram bot if enabled
+let telegramBot = null;
+if (config.telegram.enabled && config.telegram.botToken) {
+    try {
+        telegramBot = new Telegraf(config.telegram.botToken);
+        console.log(' Telegram bot initialized');
+        
+        // Command: /start or /help
+        telegramBot.start((ctx) => {
+            const welcomeMessage = `🌿 <b>Welcome to Msitu Bora Kakamega Forest Monitoring Bot!</b>
+
+I can help you monitor the Kakamega Forest with real-time alerts and data.
+
+📝 <b>Available Commands:</b>
+/hey - Get a friendly greeting and command list
+/alerts - View recent forest alerts
+/sensors - View recent sensor readings
+/stats - Get system statistics
+/help - Show this help message
+
+I'll automatically send you critical alerts when forest events are detected! 🚨`;
+            return ctx.replyWithHTML(welcomeMessage);
+        });
+        
+        // Command: /hey
+        telegramBot.hears(/^hey$/i, (ctx) => {
+            const heyMessage = `🌿 <b>Hey there! Welcome to Msitu Bora Bot!</b>
+
+Here are the commands you can use to get forest monitoring data:
+
+📝 <b>Data Commands:</b>
+/alerts - View recent forest alerts
+/alerts_critical - View only critical alerts
+/alerts_fire - View recent fire alerts
+/alerts_smoke - View recent smoke alerts
+/sensors - View recent sensor readings
+/sensors_temp - View recent temperature readings
+/sensors_hum - View recent humidity readings
+/stats - Get system statistics and overview
+
+ℹ️ <b>Info Commands:</b>
+/help - Show help message
+/start - Show welcome message
+
+I'll automatically send you alerts for critical events! 🚨`;
+            return ctx.replyWithHTML(heyMessage);
+        });
+        
+        // Command: /alerts
+        telegramBot.command('alerts', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('forest_alerts')
+                    .select('*')
+                    .order('detected_at', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No recent alerts found.');
+                }
+                
+                let message = '<b>Recent Forest Alerts:</b>\n\n';
+                for (const alert of data) {
+                    message += `🔴 <b>${alert.event_type.toUpperCase()}</b> (${alert.severity})\n`;
+                    message += `⏱ ${new Date(alert.detected_at).toLocaleString()}\n`;
+                    if (alert.latitude && alert.longitude) {
+                        message += `📍 ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}\n`;
+                    }
+                    message += '\n';
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /alerts error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving alerts.');
+            }
+        });
+        
+        // Command: /alerts_critical
+        telegramBot.command('alerts_critical', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('forest_alerts')
+                    .select('*')
+                    .eq('severity', 'critical')
+                    .order('detected_at', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No critical alerts found.');
+                }
+                
+                let message = '<b>Critical Forest Alerts:</b>\n\n';
+                for (const alert of data) {
+                    message += `🔴 <b>${alert.event_type.toUpperCase()}</b> (CRITICAL)\n`;
+                    message += `⏱ ${new Date(alert.detected_at).toLocaleString()}\n`;
+                    if (alert.latitude && alert.longitude) {
+                        message += `📍 ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}\n`;
+                    }
+                    message += '\n';
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /alerts_critical error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving critical alerts.');
+            }
+        });
+        
+        // Command: /alerts_fire
+        telegramBot.command('alerts_fire', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('forest_alerts')
+                    .select('*')
+                    .eq('event_type', 'fire')
+                    .order('detected_at', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No fire alerts found.');
+                }
+                
+                let message = '<b>Fire Alerts:</b>\n\n';
+                for (const alert of data) {
+                    message += `🔥 <b>FIRE DETECTED</b> (${alert.severity})\n`;
+                    message += `⏱ ${new Date(alert.detected_at).toLocaleString()}\n`;
+                    if (alert.latitude && alert.longitude) {
+                        message += `📍 ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}\n`;
+                    }
+                    message += '\n';
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /alerts_fire error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving fire alerts.');
+            }
+        });
+        
+        // Command: /alerts_smoke
+        telegramBot.command('alerts_smoke', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('forest_alerts')
+                    .select('*')
+                    .eq('event_type', 'smoke')
+                    .order('detected_at', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No smoke alerts found.');
+                }
+                
+                let message = '<b>Smoke Alerts:</b>\n\n';
+                for (const alert of data) {
+                    message += `💨 <b>SMOKE DETECTED</b> (${alert.severity})\n`;
+                    message += `⏱ ${new Date(alert.detected_at).toLocaleString()}\n`;
+                    if (alert.latitude && alert.longitude) {
+                        message += `📍 ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}\n`;
+                    }
+                    message += '\n';
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /alerts_smoke error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving smoke alerts.');
+            }
+        });
+        
+        // Command: /sensors
+        telegramBot.command('sensors', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('sensor_readings')
+                    .select('*')
+                    .order('timestamp', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No recent sensor readings found.');
+                }
+                
+                let message = '<b>Recent Sensor Readings:</b>\n\n';
+                for (const reading of data) {
+                    message += `📡 <b>${reading.sensor_type.toUpperCase()}:</b> ${reading.value}\n`;
+                    message += `⏱ ${new Date(reading.timestamp).toLocaleString()}\n\n`;
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /sensors error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving sensor data.');
+            }
+        });
+        
+        // Command: /sensors_temp
+        telegramBot.command('sensors_temp', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('sensor_readings')
+                    .select('*')
+                    .eq('sensor_type', 'temp')
+                    .order('timestamp', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No recent temperature readings found.');
+                }
+                
+                let message = '<b>Recent Temperature Readings:</b>\n\n';
+                for (const reading of data) {
+                    message += `🌡️ <b>TEMPERATURE:</b> ${reading.value}°C\n`;
+                    message += `⏱ ${new Date(reading.timestamp).toLocaleString()}\n\n`;
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /sensors_temp error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving temperature data.');
+            }
+        });
+        
+        // Command: /sensors_hum
+        telegramBot.command('sensors_hum', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('sensor_readings')
+                    .select('*')
+                    .eq('sensor_type', 'hum')
+                    .order('timestamp', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No recent humidity readings found.');
+                }
+                
+                let message = '<b>Recent Humidity Readings:</b>\n\n';
+                for (const reading of data) {
+                    message += `💧 <b>HUMIDITY:</b> ${reading.value}%\n`;
+                    message += `⏱ ${new Date(reading.timestamp).toLocaleString()}\n\n`;
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /sensors_hum error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving humidity data.');
+            }
+        });
+        
+        // Command: /stats
+        telegramBot.command('stats', async (ctx) => {
+            try {
+                // Get alert stats
+                const { count: totalAlerts } = await supabase
+                    .from('forest_alerts')
+                    .select('*', { count: 'exact', head: true });
+                
+                // Get sensor stats
+                const { count: totalSensorReadings } = await supabase
+                    .from('sensor_readings')
+                    .select('*', { count: 'exact', head: true });
+                
+                // Get recent alerts (last 24 hours)
+                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const { count: recentAlerts } = await supabase
+                    .from('forest_alerts')
+                    .select('*', { count: 'exact', head: true })
+                    .gte('detected_at', yesterday);
+                
+                const message = `<b>📊 Msitu Bora System Statistics</b>
+
+<b>🚨 Forest Alerts</b>
+Total Alerts: ${totalAlerts || 0}
+Last 24 Hours: ${recentAlerts || 0}
+
+<b>📡 Sensor Data</b>
+Total Readings: ${totalSensorReadings || 0}
+
+<b>🕒 System Status</b>
+MQTT: ${mqttClient.connected ? 'Connected' : 'Disconnected'}
+Supabase: Connected
+Blockchain: ${config.blockchain.enabled ? 'Enabled' : 'Disabled'}
+
+Last Update: ${new Date().toLocaleString()}`;
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /stats error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving system stats.');
+            }
+        });
+        
+        // Launch the bot
+        telegramBot.launch();
+        console.log(' Telegram bot started');
+    } catch (error) {
+        console.error(' Telegram bot initialization failed:', error.message);
+    }
+}
 
 // ============== MQTT SETUP ==============
 
@@ -271,7 +588,7 @@ async function processForestAlert(event, topic) {
         
         // Log to blockchain (async)
         if (config.blockchain.enabled && contract) {
-            console.log('⛓️  Logging to blockchain...');
+            console.log('  Logging to blockchain...');
             logToBlockchain(alertHash, alert, supabaseResult.id)
                 .then(receipt => {
                     if (receipt) {
@@ -346,7 +663,7 @@ async function processSensorData(topic, message) {
         console.log('='.repeat(60) + '\n');
         
     } catch (error) {
-        console.error('❌ Sensor data processing failed:', error.message);
+        console.error(' Sensor data processing failed:', error.message);
         console.error('Raw message:', message.toString().substring(0, 200));
     }
 }
@@ -354,7 +671,7 @@ async function processSensorData(topic, message) {
 // ============== STORE SENSOR READING ==============
 async function storeSensorReading(reading) {
     try {
-        console.log(`💾 Storing sensor reading: ${reading.sensor_type} = ${reading.value}`);
+        console.log(` Storing sensor reading: ${reading.sensor_type} = ${reading.value}`);
         
         const readingRecord = {
             sensor_type: reading.sensor_type,
@@ -372,11 +689,11 @@ async function storeSensorReading(reading) {
         
         if (error) throw error;
         
-        console.log(`✅ Sensor reading stored successfully (ID: ${data.id})`);
+        console.log(` Sensor reading stored successfully (ID: ${data.id})`);
         return data;
         
     } catch (error) {
-        console.error('❌ Supabase sensor reading error:', error.message);
+        console.error(' Supabase sensor reading error:', error.message);
         throw error;
     }
 }
@@ -594,7 +911,7 @@ async function sendTelegram(message) {
         await axios.post(url, {
             chat_id: config.telegram.chatId,
             text: message,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
         });
         console.log('    Telegram sent');
     } catch (error) {
@@ -651,20 +968,20 @@ function formatForestAlert(alert) {
         low: '🟢'
     };
     
-    let msg = `${emoji[alert.eventType] || ''} *KAKAMEGA FOREST ALERT*\n\n`;
-    msg += `*Type:* ${alert.eventType.toUpperCase()}\n`;
-    msg += `${severityEmoji[alert.severity]} *Severity:* ${alert.severity.toUpperCase()}\n`;
-    msg += `*Hub:* ${alert.hubId}\n`;
+    let msg = `${emoji[alert.eventType] || ''} <b>KAKAMEGA FOREST ALERT</b>\n\n`;
+    msg += `<b>Type:</b> ${alert.eventType.toUpperCase()}\n`;
+    msg += `${severityEmoji[alert.severity]} <b>Severity:</b> ${alert.severity.toUpperCase()}\n`;
+    msg += `<b>Hub:</b> ${alert.hubId}\n`;
     
     if (alert.coordinates?.lat && alert.coordinates?.lng) {
-        msg += `*Location:* ${alert.coordinates.lat.toFixed(4)}, ${alert.coordinates.lng.toFixed(4)}\n`;
+        msg += `<b>Location:</b> ${alert.coordinates.lat.toFixed(4)}, ${alert.coordinates.lng.toFixed(4)}\n`;
     }
     
     if (alert.mlConfidence) {
-        msg += `*Confidence:* ${alert.mlConfidence}%\n`;
+        msg += `<b>Confidence:</b> ${alert.mlConfidence}%\n`;
     }
     
-    msg += `*Time:* ${new Date(alert.detectedAt).toLocaleString()}\n`;
+    msg += `<b>Time:</b> ${new Date(alert.detectedAt).toLocaleString()}\n`;
     
     return msg;
 }
@@ -957,6 +1274,12 @@ function shutdown(signal) {
     
     if (mqttClient.connected) {
         mqttClient.end();
+    }
+    
+    // Stop Telegram bot if it's running
+    if (telegramBot) {
+        telegramBot.stop();
+        console.log(' Telegram bot stopped');
     }
     
     server.close(() => {
