@@ -2213,44 +2213,47 @@
                 
                 console.log(`Fetching Antugrow data for location: ${lat}, ${lng}`);
                 
-                // Show a temporary marker at the clicked location
-                const clickMarker = L.marker([lat, lng]).addTo(state.map);
+                // Show loading popup
+                const loadingPopup = L.popup()
+                    .setLatLng(e.latlng)
+                    .setContent('<div style="text-align:center; min-width: 200px;"><div class="spinner" style="margin:10px auto;"></div><p>Fetching satellite data...</p><p><small>Location: ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</small></p></div>')
+                    .openOn(state.map);
                 
-                // Fetch various indices
-                const ndviData = await fetchAntugrowSatelliteData(lat, lng, 'ndvi');
-                const eviData = await fetchAntugrowSatelliteData(lat, lng, 'evi');
-                const ndwiData = await fetchAntugrowSatelliteData(lat, lng, 'ndwi');
-                
-                // Remove the temporary marker after fetching data
-                setTimeout(() => {
-                    state.map.removeLayer(clickMarker);
-                }, 5000);
-                
-                // Create popup with Antugrow data
-                let popupContent = `<div style="font-family: system-ui; font-size: 12px;">`;
-                popupContent += `<strong>Antugrow Satellite Data</strong><br>`;
-                popupContent += `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}<br>`;
-                
-                if (ndviData) {
-                    const ndviValue = typeof ndviData === 'object' ? ndviData.ndvi : ndviData;
-                    const color = ndviValue > 0.5 ? '#059669' : '#dc2626';
-                    popupContent += `NDVI: <span style="color: ${color}">${ndviValue}</span><br>`;
+                try {
+                    // Fetch various indices
+                    const ndviData = await fetchAntugrowSatelliteData(lat, lng, 'ndvi');
+                    const eviData = await fetchAntugrowSatelliteData(lat, lng, 'evi');
+                    const ndwiData = await fetchAntugrowSatelliteData(lat, lng, 'ndwi');
+                    
+                    // Create popup with Antugrow data
+                    let popupContent = `<div style="font-family: system-ui; font-size: 12px; min-width: 250px;">`;
+                    popupContent += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;"><strong>Antugrow Satellite Data</strong><button onclick="this.closest('.leaflet-popup').remove()" style="background: none; border: none; font-size: 18px; cursor: pointer;">&times;</button></div>`;
+                    popupContent += `<div style="margin-bottom: 8px;"><strong>Location:</strong> ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>`;
+                    
+                    if (ndviData) {
+                        const ndviValue = typeof ndviData === 'object' ? ndviData.data.ndvi : ndviData.ndvi;
+                        const color = ndviValue > 0.5 ? '#059669' : '#dc2626';
+                        popupContent += `<div style="margin-bottom: 4px;"><strong>NDVI:</strong> <span style="color: ${color}">${ndviValue}</span></div>`;
+                    }
+                    if (eviData) {
+                        const eviValue = typeof eviData === 'object' ? eviData.data.evi : eviData.evi;
+                        const color = eviValue > 0.5 ? '#059669' : '#dc2626';
+                        popupContent += `<div style="margin-bottom: 4px;"><strong>EVI:</strong> <span style="color: ${color}">${eviValue}</span></div>`;
+                    }
+                    if (ndwiData) {
+                        const ndwiValue = typeof ndwiData === 'object' ? ndwiData.data.ndwi : ndwiData.ndwi;
+                        const color = ndwiValue > 0 ? '#059669' : '#dc2626';
+                        popupContent += `<div style="margin-bottom: 4px;"><strong>NDWI:</strong> <span style="color: ${color}">${ndwiValue}</span></div>`;
+                    }
+                    
+                    popupContent += `</div>`;
+                    
+                    // Update popup content
+                    loadingPopup.setContent(popupContent);
+                } catch (error) {
+                    console.error('Error fetching Antugrow data:', error);
+                    loadingPopup.setContent('<div style="text-align:center; min-width: 200px; color: #dc2626;"><div>⚠️ Error</div><p style="font-size: 12px;">Failed to fetch satellite data</p><p style="font-size: 10px;">' + error.message + '</p></div>');
                 }
-                if (eviData) {
-                    const eviValue = typeof eviData === 'object' ? eviData.evi : eviData;
-                    const color = eviValue > 0.5 ? '#059669' : '#dc2626';
-                    popupContent += `EVI: <span style="color: ${color}">${eviValue}</span><br>`;
-                }
-                if (ndwiData) {
-                    const ndwiValue = typeof ndwiData === 'object' ? ndwiData.ndwi : ndwiData;
-                    const color = ndwiValue > 0 ? '#059669' : '#dc2626';
-                    popupContent += `NDWI: <span style="color: ${color}">${ndwiValue}</span><br>`;
-                }
-                
-                popupContent += `</div>`;
-                
-                // Bind popup to the temporary marker
-                clickMarker.bindPopup(popupContent).openPopup();
             });
 
 

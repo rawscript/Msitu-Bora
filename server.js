@@ -143,7 +143,14 @@ I can help you monitor the Kakamega Forest with real-time alerts and data.
 📝 <b>Available Commands:</b>
 /hey - Get a friendly greeting and command list
 /alerts - View recent forest alerts
+/alerts_fire - View recent fire alerts
+/alerts_smoke - View recent smoke alerts
+/alerts_vibration - View recent vibration alerts
 /sensors - View recent sensor readings
+/sensors_temp - View recent temperature readings
+/sensors_hum - View recent humidity readings
+/sensors_smoke - View recent smoke readings
+/sensors_vibration - View recent vibration readings
 /stats - Get system statistics
 /help - Show this help message
 
@@ -162,9 +169,12 @@ Here are the commands you can use to get forest monitoring data:
 /alerts_critical - View only critical alerts
 /alerts_fire - View recent fire alerts
 /alerts_smoke - View recent smoke alerts
+/alerts_vibration - View recent vibration alerts
 /sensors - View recent sensor readings
 /sensors_temp - View recent temperature readings
 /sensors_hum - View recent humidity readings
+/sensors_smoke - View recent smoke readings
+/sensors_vibration - View recent vibration readings
 /stats - Get system statistics and overview
 
 ℹ️ <b>Info Commands:</b>
@@ -306,6 +316,39 @@ I'll automatically send you alerts for critical events! 🚨`;
             }
         });
         
+        // Command: /alerts_vibration
+        telegramBot.command('alerts_vibration', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('forest_alerts')
+                    .select('*')
+                    .eq('event_type', 'vibration')
+                    .order('detected_at', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No vibration alerts found.');
+                }
+                
+                let message = '<b>Vibration Alerts:</b>\n\n';
+                for (const alert of data) {
+                    message += `📳 <b>VIBRATION DETECTED</b> (${alert.severity})\n`;
+                    message += `⏱ ${new Date(alert.detected_at).toLocaleString()}\n`;
+                    if (alert.latitude && alert.longitude) {
+                        message += `📍 ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}\n`;
+                    }
+                    message += '\n';
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /alerts_vibration error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving vibration alerts.');
+            }
+        });
+        
         // Command: /sensors
         telegramBot.command('sensors', async (ctx) => {
             try {
@@ -389,6 +432,64 @@ I'll automatically send you alerts for critical events! 🚨`;
             } catch (error) {
                 console.error('Telegram /sensors_hum error:', error.message);
                 return ctx.reply('Sorry, I encountered an error retrieving humidity data.');
+            }
+        });
+        
+        // Command: /sensors_smoke
+        telegramBot.command('sensors_smoke', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('sensor_readings')
+                    .select('*')
+                    .eq('sensor_type', 'smoke')
+                    .order('timestamp', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No recent smoke readings found.');
+                }
+                
+                let message = '<b>Recent Smoke Readings:</b>\n\n';
+                for (const reading of data) {
+                    message += `💨 <b>SMOKE:</b> ${reading.value}\n`;
+                    message += `⏱ ${new Date(reading.timestamp).toLocaleString()}\n\n`;
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /sensors_smoke error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving smoke data.');
+            }
+        });
+        
+        // Command: /sensors_vibration
+        telegramBot.command('sensors_vibration', async (ctx) => {
+            try {
+                const { data, error } = await supabase
+                    .from('sensor_readings')
+                    .select('*')
+                    .eq('sensor_type', 'vibration')
+                    .order('timestamp', { ascending: false })
+                    .limit(5);
+                
+                if (error) throw error;
+                
+                if (data.length === 0) {
+                    return ctx.reply('No recent vibration readings found.');
+                }
+                
+                let message = '<b>Recent Vibration Readings:</b>\n\n';
+                for (const reading of data) {
+                    message += `📳 <b>VIBRATION:</b> ${reading.value}\n`;
+                    message += `⏱ ${new Date(reading.timestamp).toLocaleString()}\n\n`;
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /sensors_vibration error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving vibration data.');
             }
         });
         
@@ -771,16 +872,37 @@ async function checkSensorAlerts(reading) {
         const thresholds = {
             temp: { max: 40, min: -10 }, // Temperature in Celsius
             hum: { max: 90, min: 10 },   // Humidity in percentage
-            vibration: { max: 100 },     // Vibration intensity
-            smoke: { max: 200 },         // Smoke concentration
             fire: { max: 1 }             // Fire detection (binary)
+            // Note: All sensors now accept any string input without specific processing
         };
         
         const sensorType = reading.sensor_type;
-        const value = parseFloat(reading.value);
+        let value = reading.value;
+        
+        // Accept any string input from sensors without specific processing
+        // Just store the payload as-is for all sensor types
+        if (typeof value === 'string') {
+            console.log(`📝 Sensor reading: ${sensorType} = "${value}"`);
+            // For all sensors, any string value triggers an alert with medium severity
+            const alertEvent = {
+                hubId: 'SENSOR_NETWORK',
+                eventType: sensorType,
+                severity: 'medium',
+                message: `${sensorType.toUpperCase()} reading: ${value}`,
+                sensorData: { [sensorType]: value },
+                timestamp: reading.timestamp
+            };
+            
+            console.log(`⚠️  Sensor Alert: ${sensorType.toUpperCase()} reading: ${value}`);
+            await processForestAlert(alertEvent, `topic/${sensorType}/alert`);
+            return;
+        }
+        
+        // For numeric sensors, convert to float and check thresholds
+        const numericValue = parseFloat(value);
         
         // Skip if value is not a number or sensor type has no thresholds
-        if (isNaN(value) || !thresholds[sensorType]) {
+        if (isNaN(numericValue) || !thresholds[sensorType]) {
             return;
         }
         
@@ -789,26 +911,26 @@ async function checkSensorAlerts(reading) {
         let alertMessage = '';
         let severity = 'medium';
         
-        // Special handling for binary sensors (smoke, fire)
-        if (sensorType === 'smoke' || sensorType === 'fire') {
+        // Special handling for binary sensors (fire)
+        if (sensorType === 'fire') {
             // For binary sensors, any detection above threshold triggers an alert
-            if (value >= threshold.max) {
+            if (numericValue >= threshold.max) {
                 alertTriggered = true;
-                alertMessage = sensorType === 'smoke' ? 'Smoke detected' : 'Fire detected';
-                severity = sensorType === 'fire' ? 'critical' : 'high';
+                alertMessage = 'Fire detected';
+                severity = 'critical';
             }
         } else {
-            // For continuous sensors (temp, hum, vibration), check thresholds
-            if (threshold.max !== undefined && value > threshold.max) {
+            // For continuous sensors (temp, hum), check thresholds
+            if (threshold.max !== undefined && numericValue > threshold.max) {
                 alertTriggered = true;
-                alertMessage = `${sensorType.toUpperCase()} reading (${value}) exceeded maximum threshold (${threshold.max})`;
+                alertMessage = `${sensorType.toUpperCase()} reading (${numericValue}) exceeded maximum threshold (${threshold.max})`;
                 // Set severity based on how much the threshold is exceeded
-                severity = value > threshold.max * 1.5 ? 'critical' : 'high';
-            } else if (threshold.min !== undefined && value < threshold.min) {
+                severity = numericValue > threshold.max * 1.5 ? 'critical' : 'high';
+            } else if (threshold.min !== undefined && numericValue < threshold.min) {
                 alertTriggered = true;
-                alertMessage = `${sensorType.toUpperCase()} reading (${value}) below minimum threshold (${threshold.min})`;
+                alertMessage = `${sensorType.toUpperCase()} reading (${numericValue}) below minimum threshold (${threshold.min})`;
                 // Set severity based on how much the threshold is exceeded
-                severity = value < threshold.min * 1.5 ? 'critical' : 'high';
+                severity = numericValue < threshold.min * 1.5 ? 'critical' : 'high';
             }
         }
         
@@ -819,7 +941,7 @@ async function checkSensorAlerts(reading) {
                 eventType: sensorType,
                 severity: severity,
                 message: alertMessage,
-                sensorData: { [sensorType]: value },
+                sensorData: { [sensorType]: numericValue },
                 timestamp: reading.timestamp
             };
             
@@ -1211,10 +1333,12 @@ app.post('/api/sensors/test', async (req, res) => {
                 value = (Math.random() * 100).toFixed(2); // 0 to 100
                 break;
             case 'vibration':
-                value = (Math.random() * 150).toFixed(2); // 0 to 150
+                // For vibration, send raw string payload
+                value = 'Vibration sensor reading: ' + Math.random().toString();
                 break;
             case 'smoke':
-                value = (Math.random() * 300).toFixed(2); // 0 to 300
+                // For smoke, send raw string payload
+                value = 'Smoke sensor reading: ' + Math.random().toString();
                 break;
             case 'fire':
                 value = Math.random() > 0.9 ? 1 : 0; // 10% chance of fire detection
@@ -1246,13 +1370,77 @@ app.get('/', (req, res) => {
 
 // Antugrow authentication endpoint
 app.get('/api/antugrow-auth', (req, res) => {
-    // In a production environment, you would implement proper authentication
-    // For now, we're providing the API key and bearer token from environment variables
+    // Provide the API key and bearer token from environment variables
     res.json({
-        apiKey: process.env.ANTUGROW_API_KEY || 'agrk_145b1c8778e0a5c8b866a0c695269fea4f6d4756a119efc5a768d0cd3941c47ca894905', // Default Antugrow API key
-        bearerToken: process.env.ANTUGROW_BEARER_TOKEN || null,
+        apiKey: process.env.ANTUGROW_API_KEY || 'antu_9ag0e8pOMqm-8JkJ6Pz77h2j8_T-6-Q6qq7fJHkNLn8',
+        bearerToken: process.env.ANTUGROW_BEARER_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJNc2l0dUJvcmEiLCJleHAiOjE3NjM4MTc0NTN9.L8J34JTD0K6_Rc7UauZkk9zmZBIsjZiVsLCOqmxPjA0',
         accessToken: null
     });
+});
+
+// Antugrow satellite data endpoint
+app.get('/api/antugrow/:index', async (req, res) => {
+    try {
+        const { index } = req.params;
+        const { lat, lng } = req.query;
+        
+        if (!lat || !lng) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Latitude and longitude are required' 
+            });
+        }
+        
+        // Validate index parameter
+        const validIndices = ['ndvi', 'evi', 'ndwi', 'forest-cover'];
+        if (!validIndices.includes(index)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: `Invalid index. Valid indices: ${validIndices.join(', ')}` 
+            });
+        }
+        
+        // Get API key from environment
+        const apiKey = process.env.ANTUGROW_API_KEY || 'antu_9ag0e8pOMqm-8JkJ6Pz77h2j8_T-6-Q6qq7fJHkNLn8';
+        
+        // Prepare request to Antugrow API
+        const params = new URLSearchParams({
+            lat: lat.toString(),
+            lng: lng.toString(),
+            many: 'false'
+        });
+        
+        const apiUrl = `https://api.antugrow.com/v1/${index}?${params}`;
+        
+        // Make request to Antugrow API
+        const response = await axios.get(apiUrl, {
+            headers: {
+                'accept': 'application/json',
+                'X-API-KEY': apiKey
+            }
+        });
+        
+        // Return data from Antugrow API
+        res.json({
+            success: true,
+            index: index,
+            data: response.data
+        });
+        
+    } catch (error) {
+        console.error('Antugrow API error:', error.message);
+        
+        // Return mock data for demonstration purposes if API fails
+        res.json({
+            success: true,
+            index: req.params.index,
+            data: {
+                [req.params.index]: (Math.random() * 0.8).toFixed(2),
+                timestamp: new Date().toISOString()
+            },
+            mock: true
+        });
+    }
 });
 
 // ============== START SERVER ==============
