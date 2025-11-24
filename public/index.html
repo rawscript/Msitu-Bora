@@ -925,6 +925,34 @@
             gap: 16px;
             margin-bottom: 24px;
         }
+        
+        /* Enable scrolling for analytics content */
+        #analyticsView .content-body {
+            overflow-y: auto;
+            max-height: calc(100vh - 200px);
+            padding: 16px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary) var(--bg-dark);
+        }
+        
+        /* Custom scrollbar styling */
+        #analyticsView .content-body::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #analyticsView .content-body::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+            border-radius: 4px;
+        }
+        
+        #analyticsView .content-body::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 4px;
+        }
+        
+        #analyticsView .content-body::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-dark);
+        }
 
         .stat-card {
             background: var(--bg-card);
@@ -950,6 +978,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
             gap: 20px;
+            overflow: hidden; /* Prevent content overflow */
         }
 
         .chart-container {
@@ -957,6 +986,7 @@
             border-radius: 8px;
             padding: 20px;
             border: 1px solid var(--border);
+            overflow: hidden; /* Prevent content overflow */
         }
 
         .chart-title {
@@ -969,6 +999,7 @@
         .chart-wrapper {
             position: relative;
             height: 300px;
+            overflow: hidden; /* Prevent content overflow */
         }
 
         /* Responsive adjustments */
