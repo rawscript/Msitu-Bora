@@ -449,7 +449,7 @@
         }
 
         .event-item.fire { border-left-color: var(--critical); }
-        .event-item.chainsaw { border-left-color: var(--high); }
+        .event-item.vibration { border-left-color: var(--high); }
         .event-item.tree-fall { border-left-color: var(--medium); }
         .event-item.smoke { border-left-color: var(--low); }
         .event-item.system { border-left-color: var(--primary); }
@@ -1077,7 +1077,7 @@
                     <div class="event-tabs">
                         <button class="event-tab active" data-filter="all">All Events</button>
                         <button class="event-tab" data-filter="fire">Fire</button>
-                        <button class="event-tab" data-filter="chainsaw">Chainsaw</button>
+                        <button class="event-tab" data-filter="vibration">Vibration</button>
                         <button class="event-tab" data-filter="smoke">Smoke</button>
                     </div>
 
@@ -1351,7 +1351,7 @@
     // Event type configurations
     const eventConfig = {
         fire: { color: '#dc2626', label: 'Fire' },
-        chainsaw: { color: '#ea580c', label: 'Chainsaw' },
+        vibration: { color: '#ea580c', label: 'Vibration' },
         'tree-fall': { color: '#d97706', label: 'Tree Fall' },
         smoke: { color: '#65a30d', label: 'Smoke' },
         system: { color: '#059669', label: 'System' }
@@ -2097,6 +2097,14 @@
         const filteredEvents = state.currentFilter === 'all' 
             ? state.events 
             : state.events.filter(event => event.event_type === state.currentFilter);
+
+        // Debug: Log the events and filter
+        console.log('Rendering events:', {
+            totalEvents: state.events.length,
+            filter: state.currentFilter,
+            filteredCount: filteredEvents.length,
+            eventTypes: state.events.map(e => e.event_type)
+        });
 
         if (filteredEvents.length === 0) {
             showEmptyState('events', `No ${state.currentFilter === 'all' ? '' : state.currentFilter + ' '}events found.`);
@@ -2937,7 +2945,7 @@
             },
             {
                 id: 2,
-                event_type: 'chainsaw',
+                event_type: 'vibration',
                 hub_id: 'KAK-02', 
                 severity: 'high',
                 latitude: 0.36,

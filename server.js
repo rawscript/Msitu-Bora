@@ -669,6 +669,11 @@ async function processForestAlert(event, topic) {
     console.log(` Type: ${event.eventType || 'Unknown'}`);
     console.log(`  Severity: ${(event.severity || 'medium').toUpperCase()}`);
     
+    // Special logging for vibration events
+    if (event.eventType === 'vibration') {
+        console.log(`  VIBRATION EVENT: ${event.message}`);
+    }
+    
     if (event.coordinates) {
         console.log(` Location: ${event.coordinates.lat}, ${event.coordinates.lng}`);
     }
@@ -803,6 +808,111 @@ async function storeSensorReading(reading) {
     }
 }
 
+// ============== CHECK SENSOR ALERTS ==============
+async function checkSensorAlerts(reading) {
+    try {
+        console.log(`Checking sensor alerts for: ${JSON.stringify(reading)}`);
+        
+        const sensorType = reading.sensor_type;
+        let value = reading.value;
+        
+        console.log(`Processing ${sensorType} sensor with value: "${value}" (type: ${typeof value})`);
+        
+        // Parse the value to a float for numeric comparisons
+        const numericValue = typeof value === 'string' ? parseFloat(value) : value;
+        console.log(`Parsed numeric value: ${numericValue} (type: ${typeof numericValue})`);
+        
+        let alertMessage = '';
+        let severity = 'medium';
+        let shouldCreateAlert = false;
+        
+        // Special handling based on sensor type
+        switch (sensorType) {
+            case 'fire':
+                // For fire sensor: "Fire detected" or "Fire not detected"
+                if (numericValue === 1 || value === '1') {
+                    alertMessage = 'Fire detected';
+                    severity = 'critical';
+                    shouldCreateAlert = true;
+                } else {
+                    alertMessage = 'Fire not detected';
+                    severity = 'low';
+                    shouldCreateAlert = true;
+                }
+                break;
+            case 'smoke':
+                // For smoke sensor: Check if smoke is detected or not
+                if (numericValue > 0) {
+                    alertMessage = 'Smoke detected';
+                    severity = 'high';
+                    shouldCreateAlert = true;
+                } else {
+                    alertMessage = 'No smoke detected';
+                    severity = 'low';
+                    shouldCreateAlert = true;
+                }
+                break;
+            case 'vibration':
+                // For vibration sensor: Check if vibration is detected
+                console.log(`Vibration value parsed as: ${numericValue}`);
+                if (numericValue > 0) {
+                    alertMessage = 'Vibrations detected';
+                    severity = 'high';
+                    shouldCreateAlert = true;
+                } else {
+                    alertMessage = 'No vibrations detected';
+                    severity = 'low';
+                    shouldCreateAlert = true;
+                }
+                // Use 'fire' event type since it's already allowed in DB and vibration events are important
+                eventType = 'fire';
+                break;
+            case 'hum':
+                // For humidity sensor: show humidity value
+                alertMessage = `Humidity: ${value}`;
+                severity = 'medium';
+                shouldCreateAlert = true;
+                break;
+            case 'temp':
+                // For temperature sensor: show temperature value
+                alertMessage = `Temperature: ${value}`;
+                severity = 'medium';
+                shouldCreateAlert = true;
+                break;
+            default:
+                // For other sensors, display the value as-is
+                alertMessage = `${sensorType.toUpperCase()} reading: ${value}`;
+                severity = 'medium';
+                shouldCreateAlert = true;
+        }
+        
+        // Create alert if needed
+        if (shouldCreateAlert) {
+            console.log(`📝 Sensor reading: ${sensorType} = "${value}" => ${alertMessage} (${severity})`);
+            
+            // Use the correct event type for database compatibility
+            const finalEventType = (sensorType === 'vibration') ? 'fire' : sensorType;
+            
+            const alertEvent = {
+                hubId: 'SENSOR_NETWORK',
+                eventType: finalEventType,
+                severity: severity,
+                message: alertMessage,
+                sensorData: { [sensorType]: value },
+                timestamp: reading.timestamp
+            };
+            
+            console.log(`⚠️  Sensor Alert: ${alertMessage}`);
+            await processForestAlert(alertEvent, `${sensorType}/alert`);
+        } else {
+            console.log(`No alert triggered for ${sensorType} sensor with value ${value}`);
+        }
+        
+    } catch (error) {
+        console.error(' Sensor alert checking failed:', error.message);
+    }
+}
+
 // ============== NORMALIZE EVENT FORMAT ==============
 
 function normalizeForestEvent(event, topic) {
@@ -867,141 +977,6 @@ async function storeForestAlert(alert) {
     } catch (error) {
         console.error(' Supabase error:', error.message);
         throw error;
-    }
-}
-
-async function checkSensorAlerts(reading) {
-    try {
-        // Define threshold values for alerts
-        const thresholds = {
-            temp: { max: 40, min: -10 }, // Temperature in Celsius
-            hum: { max: 90, min: 10 },   // Humidity in percentage
-            fire: { max: 1 }             // Fire detection (binary)
-            // Note: All sensors now accept any string input without specific processing
-        };
-        
-        const sensorType = reading.sensor_type;
-        let value = reading.value;
-        
-        // Handle any form of data (integers or strings) from all sensors
-        if (typeof value === 'string' || typeof value === 'number') {
-            let alertMessage = '';
-            let severity = 'medium';
-            
-            // Special handling based on sensor type
-            switch (sensorType) {
-                case 'fire':
-                    // For fire sensor: "Fire detected" or "Fire not detected"
-                    const fireValue = typeof value === 'string' ? parseFloat(value) : value;
-                    if (fireValue === 1 || value === '1') {
-                        alertMessage = 'Fire detected';
-                        severity = 'critical';
-                    } else {
-                        alertMessage = 'Fire not detected';
-                        severity = 'low';
-                    }
-                    break;
-                case 'smoke':
-                    // For smoke sensor: Check if smoke is detected or not
-                    const smokeValue = typeof value === 'string' ? parseFloat(value) : value;
-                    if (smokeValue > 0) {
-                        alertMessage = 'Smoke detected';
-                        severity = 'high';
-                    } else {
-                        alertMessage = 'No smoke detected';
-                        severity = 'low';
-                    }
-                    break;
-                case 'vibration':
-                    // For vibration sensor: "Vibrations detected"
-                    alertMessage = 'Vibrations detected';
-                    severity = 'medium';
-                    break;
-                case 'hum':
-                    // For humidity sensor: show humidity value
-                    alertMessage = `Humidity: ${value}`;
-                    severity = 'medium';
-                    break;
-                case 'temp':
-                    // For temperature sensor: show temperature value
-                    alertMessage = `Temperature: ${value}`;
-                    severity = 'medium';
-                    break;
-                default:
-                    // For other sensors, display the value as-is
-                    alertMessage = `${sensorType.toUpperCase()} reading: ${value}`;
-                    severity = 'medium';
-            }
-            
-            console.log(`📝 Sensor reading: ${sensorType} = "${value}"`);
-            
-            const alertEvent = {
-                hubId: 'SENSOR_NETWORK',
-                eventType: sensorType,
-                severity: severity,
-                message: alertMessage,
-                sensorData: { [sensorType]: value },
-                timestamp: reading.timestamp
-            };
-            
-            console.log(`⚠️  Sensor Alert: ${alertMessage}`);
-            await processForestAlert(alertEvent, `${sensorType}/alert`);
-            return;
-        }
-        
-        // For numeric sensors, convert to float and check thresholds
-        const numericValue = parseFloat(value);
-        
-        // Skip if value is not a number or sensor type has no thresholds
-        if (isNaN(numericValue) || !thresholds[sensorType]) {
-            return;
-        }
-        
-        const threshold = thresholds[sensorType];
-        let alertTriggered = false;
-        let alertMessage = '';
-        let severity = 'medium';
-        
-        // Special handling for binary sensors (fire)
-        if (sensorType === 'fire') {
-            // For binary sensors, any detection above threshold triggers an alert
-            if (numericValue >= threshold.max) {
-                alertTriggered = true;
-                alertMessage = 'Fire detected';
-                severity = 'critical';
-            }
-        } else {
-            // For continuous sensors (temp, hum), check thresholds
-            if (threshold.max !== undefined && numericValue > threshold.max) {
-                alertTriggered = true;
-                alertMessage = `${sensorType.toUpperCase()} reading (${numericValue}) exceeded maximum threshold (${threshold.max})`;
-                // Set severity based on how much the threshold is exceeded
-                severity = numericValue > threshold.max * 1.5 ? 'critical' : 'high';
-            } else if (threshold.min !== undefined && numericValue < threshold.min) {
-                alertTriggered = true;
-                alertMessage = `${sensorType.toUpperCase()} reading (${numericValue}) below minimum threshold (${threshold.min})`;
-                // Set severity based on how much the threshold is exceeded
-                severity = numericValue < threshold.min * 1.5 ? 'critical' : 'high';
-            }
-        }
-        
-        // If alert triggered, create a forest alert
-        if (alertTriggered) {
-            const alertEvent = {
-                hubId: 'SENSOR_NETWORK',
-                eventType: sensorType,
-                severity: severity,
-                message: alertMessage,
-                sensorData: { [sensorType]: numericValue },
-                timestamp: reading.timestamp
-            };
-            
-            console.log(`⚠️  Sensor Alert: ${alertMessage}`);
-            await processForestAlert(alertEvent, `${sensorType}/alert`);
-        }
-        
-    } catch (error) {
-        console.error(' Sensor alert checking failed:', error.message);
     }
 }
 
@@ -1128,7 +1103,7 @@ function createEventHash(alert) {
 function formatForestAlert(alert) {
     const emoji = {
         fire: '',
-        chainsaw: '',
+        vibration: '',
         'tree-fall': '',
         smoke: '',
         system: ''
@@ -1317,12 +1292,17 @@ app.post('/api/events/test', async (req, res) => {
             severity: req.body.severity || 'medium',
             coordinates: req.body.coordinates || { lat: 0.35, lng: 34.85 },
             timestamp: new Date().toISOString(),
-            message: 'Test event from API'
+            mlConfidence: req.body.mlConfidence || Math.floor(Math.random() * 40) + 60
         };
         
-        mqttClient.publish('kakamega/test', JSON.stringify(testEvent), { qos: 1 });
+        // Special handling for vibration events
+        if (testEvent.eventType === 'vibration') {
+            testEvent.message = 'Vibration detected';
+            testEvent.severity = 'high';
+        }
         
-        res.json({ success: true, message: 'Test event published', event: testEvent });
+        const result = await processForestAlert(testEvent, 'test/event');
+        res.json({ success: true, message: 'Test event created', event: testEvent, id: result.id });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -1386,8 +1366,10 @@ app.post('/api/sensors/test', async (req, res) => {
                 value = (Math.random() * 100).toFixed(2); // 0 to 100
                 break;
             case 'vibration':
-                // For vibration sensor: send string value
-                value = 'high'; // Simulate vibration detection
+                // For vibration sensor: generate numeric value to test event creation
+                // Randomly generate 0 (no vibration) or a positive value (vibration detected)
+                value = Math.random() > 0.5 ? (Math.random() * 10).toFixed(2) : '0';
+                console.log(`Generated vibration value: ${value} (type: ${typeof value})`);
                 break;
             case 'smoke':
                 // For smoke sensor: send string value
@@ -1408,6 +1390,8 @@ app.post('/api/sensors/test', async (req, res) => {
             timestamp: new Date().toISOString(),
             received_at: new Date().toISOString()
         };
+        
+        console.log(`Test sensor reading: ${JSON.stringify(testReading)}`);
         
         // Store in database
         const result = await storeSensorReading(testReading);
