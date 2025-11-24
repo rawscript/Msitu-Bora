@@ -737,6 +737,9 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 16px;
+            max-height: calc(100vh - 200px); /* Adjust based on header/footer height */
+            overflow-y: auto; /* Enable vertical scrolling */
+            padding: 16px;
         }
 
         .sensor-card {
@@ -780,6 +783,8 @@
             grid-template-columns: 1fr 1fr;
             gap: 8px;
             font-size: 0.85em;
+            max-height: 200px; /* Limit height of details */
+            overflow-y: auto; /* Enable scrolling for details */
         }
 
         .sensor-detail {

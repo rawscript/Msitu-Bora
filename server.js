@@ -21,7 +21,7 @@ const config = {
         port: parseInt(process.env.MQTT_PORT) || 0,
         username: process.env.MQTT_USERNAME,
         password: process.env.MQTT_PASSWORD,
-        topics: ['topic/temp', 'topic/hum', 'topic/vibration', 'topic/smoke', 'topic/fire'] // Sensor data topics
+        topics: ['temp', 'hum', 'vibration', 'smoke', 'fire'] // Sensor data topics
     },
     
     supabase: {
@@ -602,8 +602,8 @@ mqttClient.on('message', async (topic, message) => {
         eventCount++;
         
         // Handle sensor data topics
-        if (topic === 'topic/temp' || topic === 'topic/hum' || topic === 'topic/vibration' || 
-            topic === 'topic/smoke' || topic === 'topic/fire') {
+        if (topic === 'temp' || topic === 'hum' || topic === 'vibration' || 
+            topic === 'smoke' || topic === 'fire') {
             await processSensorData(topic, message.toString());
             return;
         }
@@ -738,7 +738,7 @@ async function processSensorData(topic, message) {
         console.log(` Value: ${typeof sensorValue === 'object' ? JSON.stringify(sensorValue) : sensorValue}`);
         
         // Extract sensor type from topic
-        const sensorType = topic.replace('topic/', '');
+        const sensorType = topic;
         
         // Create sensor reading record
         const sensorReading = {
@@ -879,22 +879,63 @@ async function checkSensorAlerts(reading) {
         const sensorType = reading.sensor_type;
         let value = reading.value;
         
-        // Accept any string input from sensors without specific processing
-        // Just store the payload as-is for all sensor types
-        if (typeof value === 'string') {
+        // Handle any form of data (integers or strings) from all sensors
+        if (typeof value === 'string' || typeof value === 'number') {
+            let alertMessage = '';
+            let severity = 'medium';
+            
+            // Special handling based on sensor type
+            switch (sensorType) {
+                case 'fire':
+                    // For fire sensor: "Fire detected" or "Fire not detected"
+                    const fireValue = typeof value === 'string' ? parseFloat(value) : value;
+                    if (fireValue === 1 || value === '1') {
+                        alertMessage = 'Fire detected';
+                        severity = 'critical';
+                    } else {
+                        alertMessage = 'Fire not detected';
+                        severity = 'low';
+                    }
+                    break;
+                case 'smoke':
+                    // For smoke sensor: "Smoke detected"
+                    alertMessage = 'Smoke detected';
+                    severity = 'high';
+                    break;
+                case 'vibration':
+                    // For vibration sensor: "Vibrations detected"
+                    alertMessage = 'Vibrations detected';
+                    severity = 'medium';
+                    break;
+                case 'hum':
+                    // For humidity sensor: show humidity value
+                    alertMessage = `Humidity: ${value}`;
+                    severity = 'medium';
+                    break;
+                case 'temp':
+                    // For temperature sensor: show temperature value
+                    alertMessage = `Temperature: ${value}`;
+                    severity = 'medium';
+                    break;
+                default:
+                    // For other sensors, display the value as-is
+                    alertMessage = `${sensorType.toUpperCase()} reading: ${value}`;
+                    severity = 'medium';
+            }
+            
             console.log(`📝 Sensor reading: ${sensorType} = "${value}"`);
-            // For all sensors, any string value triggers an alert with medium severity
+            
             const alertEvent = {
                 hubId: 'SENSOR_NETWORK',
                 eventType: sensorType,
-                severity: 'medium',
-                message: `${sensorType.toUpperCase()} reading: ${value}`,
+                severity: severity,
+                message: alertMessage,
                 sensorData: { [sensorType]: value },
                 timestamp: reading.timestamp
             };
             
-            console.log(`⚠️  Sensor Alert: ${sensorType.toUpperCase()} reading: ${value}`);
-            await processForestAlert(alertEvent, `topic/${sensorType}/alert`);
+            console.log(`⚠️  Sensor Alert: ${alertMessage}`);
+            await processForestAlert(alertEvent, `${sensorType}/alert`);
             return;
         }
         
@@ -946,7 +987,7 @@ async function checkSensorAlerts(reading) {
             };
             
             console.log(`⚠️  Sensor Alert: ${alertMessage}`);
-            await processForestAlert(alertEvent, `topic/${sensorType}/alert`);
+            await processForestAlert(alertEvent, `${sensorType}/alert`);
         }
         
     } catch (error) {
@@ -1327,20 +1368,23 @@ app.post('/api/sensors/test', async (req, res) => {
         let value;
         switch (sensorType) {
             case 'temp':
+                // For temperature sensor: generate numeric value
                 value = (Math.random() * 50 - 10).toFixed(2); // -10 to 40
                 break;
             case 'hum':
+                // For humidity sensor: generate numeric value
                 value = (Math.random() * 100).toFixed(2); // 0 to 100
                 break;
             case 'vibration':
-                // For vibration, send raw string payload
-                value = 'Vibration sensor reading: ' + Math.random().toString();
+                // For vibration sensor: send string value
+                value = 'high'; // Simulate vibration detection
                 break;
             case 'smoke':
-                // For smoke, send raw string payload
-                value = 'Smoke sensor reading: ' + Math.random().toString();
+                // For smoke sensor: send string value
+                value = 'detected'; // Simulate smoke detection
                 break;
             case 'fire':
+                // For fire sensor: send binary value (1 or 0)
                 value = Math.random() > 0.9 ? 1 : 0; // 10% chance of fire detection
                 break;
             default:
