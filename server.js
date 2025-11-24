@@ -301,7 +301,8 @@ I'll automatically send you alerts for critical events! 🚨`;
                 
                 let message = '<b>Smoke Alerts:</b>\n\n';
                 for (const alert of data) {
-                    message += `💨 <b>SMOKE DETECTED</b> (${alert.severity})\n`;
+                    const alertText = alert.message || (alert.severity === 'low' ? 'No smoke detected' : 'Smoke detected');
+                    message += `💨 <b>${alertText.toUpperCase()}</b> (${alert.severity})\n`;
                     message += `⏱ ${new Date(alert.detected_at).toLocaleString()}\n`;
                     if (alert.latitude && alert.longitude) {
                         message += `📍 ${alert.latitude.toFixed(4)}, ${alert.longitude.toFixed(4)}\n`;
@@ -453,7 +454,10 @@ I'll automatically send you alerts for critical events! 🚨`;
                 
                 let message = '<b>Recent Smoke Readings:</b>\n\n';
                 for (const reading of data) {
-                    message += `💨 <b>SMOKE:</b> ${reading.value}\n`;
+                    // Parse the smoke value to determine if smoke is detected
+                    const smokeValue = typeof reading.value === 'string' ? parseFloat(reading.value) : reading.value;
+                    const smokeStatus = (smokeValue > 0) ? 'Smoke detected' : 'No smoke detected';
+                    message += `💨 <b>${smokeStatus}:</b> ${reading.value}\n`;
                     message += `⏱ ${new Date(reading.timestamp).toLocaleString()}\n\n`;
                 }
                 
@@ -898,9 +902,15 @@ async function checkSensorAlerts(reading) {
                     }
                     break;
                 case 'smoke':
-                    // For smoke sensor: "Smoke detected"
-                    alertMessage = 'Smoke detected';
-                    severity = 'high';
+                    // For smoke sensor: Check if smoke is detected or not
+                    const smokeValue = typeof value === 'string' ? parseFloat(value) : value;
+                    if (smokeValue > 0) {
+                        alertMessage = 'Smoke detected';
+                        severity = 'high';
+                    } else {
+                        alertMessage = 'No smoke detected';
+                        severity = 'low';
+                    }
                     break;
                 case 'vibration':
                     // For vibration sensor: "Vibrations detected"
