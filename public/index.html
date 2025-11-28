@@ -2174,12 +2174,19 @@
     }
 
     function addMarkerToMap(event) {
-        if (!state.map || !event.latitude || !event.longitude) return;
+        // Use default coordinates if event doesn't have geographical data
+        const latitude = event.latitude || 0.35;
+        const longitude = event.longitude || 34.85;
+        
+        // Check if we're using default coordinates
+        const usingDefaultLocation = !event.latitude || !event.longitude;
+        
+        if (!state.map) return;
 
         const config = eventConfig[event.event_type] || eventConfig.system;
         
         try {
-            const marker = L.circleMarker([event.latitude, event.longitude], {
+            const marker = L.circleMarker([latitude, longitude], {
                 radius: 8,
                 fillColor: config.color,
                 color: '#ffffff',
@@ -2197,9 +2204,17 @@
                     ${formatDateTime(event.detected_at)}<br>
             `;
             
+            // Add warning if using default location
+            if (usingDefaultLocation) {
+                popupContent += `<br><strong style="color: #ea580c;">⚠️ No GPS data available</strong><br>`;
+                popupContent += `Showing at default location<br>`;
+            } else {
+                popupContent += `Location: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}<br>`;
+            }
+            
             // Add button to fetch Antugrow data for this location
             popupContent += `
-                <button onclick="fetchAndShowAntugrowData(${event.latitude}, ${event.longitude}, 'antugrow-data-${event.id}')" 
+                <button onclick="fetchAndShowAntugrowData(${latitude}, ${longitude}, 'antugrow-data-${event.id}')" 
                         style="margin-top: 8px; padding: 4px 8px; background: #059669; color: white; border: none; border-radius: 4px; cursor: pointer;">
                     Get Satellite Data
                 </button>
