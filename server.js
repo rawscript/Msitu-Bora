@@ -258,16 +258,21 @@ I'll automatically send you alerts for critical events! 🚨`;
                     .select('*')
                     .eq('event_type', 'fire')
                     .order('detected_at', { ascending: false })
-                    .limit(5);
+                    .limit(100); // Get more events to filter properly
                 
                 if (error) throw error;
                 
-                if (data.length === 0) {
+                // Filter out vibration events that might still be stored as 'fire' in the database
+                const fireEvents = data.filter(event => 
+                    !event.sensor_data || event.sensor_data.vibration === undefined
+                ).slice(0, 5); // Limit to 5 as before
+                
+                if (fireEvents.length === 0) {
                     return ctx.reply('No fire alerts found.');
                 }
                 
                 let message = '<b>Fire Alerts:</b>\n\n';
-                for (const alert of data) {
+                for (const alert of fireEvents) {
                     message += `🔥 <b>FIRE DETECTED</b> (${alert.severity})\n`;
                     message += `⏱ ${new Date(alert.detected_at).toLocaleString()}\n`;
                     if (alert.latitude && alert.longitude) {
@@ -720,8 +725,12 @@ async function processForestAlert(event, topic) {
         console.log(`  Processing: ${processingTime}ms`);
         console.log('='.repeat(60) + '\n');
         
+        // Return the stored result
+        return supabaseResult;
+        
     } catch (error) {
         console.error(' Processing failed:', error.message);
+        throw error;
     }
 }
 
@@ -865,7 +874,6 @@ async function checkSensorAlerts(reading) {
                     shouldCreateAlert = true;
                 }
                 // Use 'fire' event type since it's already allowed in DB and vibration events are important
-                eventType = 'fire';
                 break;
             case 'hum':
                 // For humidity sensor: show humidity value
@@ -890,8 +898,8 @@ async function checkSensorAlerts(reading) {
         if (shouldCreateAlert) {
             console.log(`📝 Sensor reading: ${sensorType} = "${value}" => ${alertMessage} (${severity})`);
             
-            // Use the correct event type for database compatibility
-            const finalEventType = (sensorType === 'vibration') ? 'fire' : sensorType;
+            // Now that the database supports 'vibration' as a valid event type, we can store it directly
+            const finalEventType = sensorType;
             
             const alertEvent = {
                 hubId: 'SENSOR_NETWORK',
@@ -916,9 +924,13 @@ async function checkSensorAlerts(reading) {
 // ============== NORMALIZE EVENT FORMAT ==============
 
 function normalizeForestEvent(event, topic) {
+    // Determine the correct event type
+    // Now that the database supports 'vibration' as a valid event type, we can store it directly
+    let eventType = event.eventType || event.event_type || event.type || 'unknown';
+    
     return {
         hubId: event.hubId || event.hub_id || 'UNKNOWN',
-        eventType: event.eventType || event.event_type || event.type || 'unknown',
+        eventType: eventType,
         severity: event.severity || 'medium',
         coordinates: event.coordinates || {
             lat: event.latitude || event.lat || null,
@@ -945,9 +957,12 @@ async function storeForestAlert(alert) {
             coordinates = `POINT(${alert.coordinates.lng} ${alert.coordinates.lat})`;
         }
         
+        // Now that the database supports 'vibration' as a valid event type, we can store it directly
+        const dbEventType = alert.eventType;
+        
         const alertRecord = {
             hub_id: alert.hubId,
-            event_type: alert.eventType,
+            event_type: dbEventType,
             severity: alert.severity,
             latitude: alert.coordinates?.lat || null,
             longitude: alert.coordinates?.lng || null,
@@ -1101,6 +1116,9 @@ function createEventHash(alert) {
 }
 
 function formatForestAlert(alert) {
+    // Now that vibration events are stored with their correct event type, we can use it directly
+    const displayEventType = alert.eventType;
+    
     const emoji = {
         fire: '',
         vibration: '',
@@ -1116,8 +1134,8 @@ function formatForestAlert(alert) {
         low: '🟢'
     };
     
-    let msg = `${emoji[alert.eventType] || ''} <b>KAKAMEGA FOREST ALERT</b>\n\n`;
-    msg += `<b>Type:</b> ${alert.eventType.toUpperCase()}\n`;
+    let msg = `${emoji[displayEventType] || ''} <b>KAKAMEGA FOREST ALERT</b>\n\n`;
+    msg += `<b>Type:</b> ${displayEventType.toUpperCase()}\n`;
     msg += `${severityEmoji[alert.severity]} <b>Severity:</b> ${alert.severity.toUpperCase()}\n`;
     msg += `<b>Hub:</b> ${alert.hubId}\n`;
     
@@ -1299,8 +1317,13 @@ app.post('/api/events/test', async (req, res) => {
         if (testEvent.eventType === 'vibration') {
             testEvent.message = 'Vibration detected';
             testEvent.severity = 'high';
+            // For display purposes, we need to set the sensorData to indicate this is a vibration event
+            testEvent.sensorData = { vibration: 1 };
+            // Don't convert vibration events to fire events when processing
+            testEvent.originalEventType = testEvent.eventType; // Preserve original for display
         }
         
+        // Process the event and get the result
         const result = await processForestAlert(testEvent, 'test/event');
         res.json({ success: true, message: 'Test event created', event: testEvent, id: result.id });
     } catch (error) {

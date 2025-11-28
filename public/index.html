@@ -2096,7 +2096,17 @@
         
         const filteredEvents = state.currentFilter === 'all' 
             ? state.events 
-            : state.events.filter(event => event.event_type === state.currentFilter);
+            : state.currentFilter === 'vibration'
+                ? state.events.filter(event => 
+                    event.event_type === 'vibration' || 
+                    (event.event_type === 'fire' && event.sensor_data && event.sensor_data.vibration !== undefined)
+                  )
+                : state.currentFilter === 'fire'
+                    ? state.events.filter(event => 
+                        event.event_type === 'fire' && 
+                        !(event.sensor_data && event.sensor_data.vibration !== undefined)
+                      )
+                    : state.events.filter(event => event.event_type === state.currentFilter);
 
         // Debug: Log the events and filter
         console.log('Rendering events:', {
@@ -2112,12 +2122,17 @@
         }
 
         container.innerHTML = filteredEvents.map(event => {
-            const config = eventConfig[event.event_type] || eventConfig.system;
+            // Determine the correct event type for display
+            const displayEventType = (event.event_type === 'fire' && event.sensor_data && event.sensor_data.vibration !== undefined) 
+                ? 'vibration' 
+                : event.event_type;
+            
+            const config = eventConfig[displayEventType] || eventConfig.system;
             const latitude = event.latitude ? event.latitude.toFixed(4) : 'N/A';
             const longitude = event.longitude ? event.longitude.toFixed(4) : 'N/A';
             
             return `
-                <div class="event-item ${event.event_type}" onclick="showEventDetail(${event.id})">
+                <div class="event-item ${displayEventType}" onclick="showEventDetail(${event.id})">
                     <div class="event-header">
                         <div class="event-type">${config.label}</div>
                         <div class="event-severity ${event.severity || 'medium'}">${event.severity || 'unknown'}</div>
