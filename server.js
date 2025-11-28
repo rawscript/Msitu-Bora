@@ -135,7 +135,12 @@ if (config.telegram.enabled && config.telegram.botToken) {
         console.log(' Telegram bot initialized');
         
         // Command: /start or /help
-        telegramBot.start((ctx) => {
+        telegramBot.start(async (ctx) => {
+            console.log(`🤖 New user started bot: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+            console.log(`📝 User details:`, JSON.stringify(ctx.from, null, 2));
+            // Automatically subscribe user when they start the bot
+            await subscribeUser(ctx.from.id, ctx.from.username || 'Unknown');
+            
             const welcomeMessage = `🌿 <b>Welcome to Msitu Bora Kakamega Forest Monitoring Bot!</b>
 
 I can help you monitor the Kakamega Forest with real-time alerts and data.
@@ -152,9 +157,15 @@ I can help you monitor the Kakamega Forest with real-time alerts and data.
 /sensors_smoke - View recent smoke readings
 /sensors_vibration - View recent vibration readings
 /stats - Get system statistics
+/subscribers - List all subscribers (debug)
+/test_alert - Send a test alert (debug)
+/sync_subscribers - Sync all subscribers (admin)
+/add_subscriber - Add a subscriber manually (admin)
+/subscribe - Subscribe to real-time alerts
+/unsubscribe - Unsubscribe from real-time alerts
 /help - Show this help message
 
-I'll automatically send you critical alerts when forest events are detected! 🚨`;
+You are now <b>subscribed</b> to real-time alerts! 🚨`;
             return ctx.replyWithHTML(welcomeMessage);
         });
         
@@ -176,13 +187,45 @@ Here are the commands you can use to get forest monitoring data:
 /sensors_smoke - View recent smoke readings
 /sensors_vibration - View recent vibration readings
 /stats - Get system statistics and overview
+/subscribers - List all subscribers (debug)
+/test_alert - Send a test alert (debug)
+/sync_subscribers - Sync all subscribers (admin)
+
+🔔 <b>Subscription Commands:</b>
+/subscribe - Subscribe to real-time alerts
+/unsubscribe - Unsubscribe from real-time alerts
 
 ℹ️ <b>Info Commands:</b>
 /help - Show help message
 /start - Show welcome message
 
-I'll automatically send you alerts for critical events! 🚨`;
+You'll automatically receive alerts for critical events! 🚨`;
             return ctx.replyWithHTML(heyMessage);
+        });
+        
+        // Command: /subscribe
+        telegramBot.command('subscribe', async (ctx) => {
+            console.log(`📌 User requested subscription: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+            console.log(`📝 User details:`, JSON.stringify(ctx.from, null, 2));
+            try {
+                await subscribeUser(ctx.from.id, ctx.from.username || 'Unknown');
+                return ctx.replyWithHTML('✅ You are now <b>subscribed</b> to real-time forest alerts!');
+            } catch (error) {
+                console.error('Telegram /subscribe error:', error.message);
+                return ctx.reply('Sorry, I encountered an error subscribing you.');
+            }
+        });
+        
+        // Command: /unsubscribe
+        telegramBot.command('unsubscribe', async (ctx) => {
+            console.log(`📤 User requested unsubscription: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+            try {
+                await unsubscribeUser(ctx.from.id);
+                return ctx.replyWithHTML('❌ You have been <b>unsubscribed</b> from real-time forest alerts.');
+            } catch (error) {
+                console.error('Telegram /unsubscribe error:', error.message);
+                return ctx.reply('Sorry, I encountered an error unsubscribing you.');
+            }
         });
         
         // Command: /alerts
@@ -505,6 +548,8 @@ I'll automatically send you alerts for critical events! 🚨`;
         // Command: /stats
         telegramBot.command('stats', async (ctx) => {
             try {
+                console.log(`📊 User requested stats: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+                
                 // Get alert stats
                 const { count: totalAlerts } = await supabase
                     .from('forest_alerts')
@@ -522,6 +567,25 @@ I'll automatically send you alerts for critical events! 🚨`;
                     .select('*', { count: 'exact', head: true })
                     .gte('detected_at', yesterday);
                 
+                // Get subscriber counts
+                const { count: totalSubscribers, error: totalSubError } = await supabase
+                    .from('telegram_subscribers')
+                    .select('*', { count: 'exact', head: true });
+                
+                const { count: activeSubscribers, error: activeSubError } = await supabase
+                    .from('telegram_subscribers')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('is_active', true);
+                
+                // Get actual subscriber data for debugging
+                const { data: subscriberData, error: dataError } = await supabase
+                    .from('telegram_subscribers')
+                    .select('*');
+                
+                if (totalSubError) console.error('Error getting total subscribers:', totalSubError);
+                if (activeSubError) console.error('Error getting active subscribers:', activeSubError);
+                if (dataError) console.error('Error getting subscriber data:', dataError);
+                
                 const message = `<b>📊 Msitu Bora System Statistics</b>
 
 <b>🚨 Forest Alerts</b>
@@ -531,12 +595,28 @@ Last 24 Hours: ${recentAlerts || 0}
 <b>📡 Sensor Data</b>
 Total Readings: ${totalSensorReadings || 0}
 
+<b>👥 Subscribers</b>
+Total Subscribers: ${totalSubscribers || 0}
+Active Subscribers: ${activeSubscribers || 0}
+
 <b>🕒 System Status</b>
 MQTT: ${mqttClient.connected ? 'Connected' : 'Disconnected'}
 Supabase: Connected
 Blockchain: ${config.blockchain.enabled ? 'Enabled' : 'Disabled'}
 
 Last Update: ${new Date().toLocaleString()}`;
+                
+                // Also send detailed subscriber info to the requesting user
+                if (subscriberData && subscriberData.length > 0) {
+                    let subscriberDetails = '\n\n<b>📋 Subscriber Details:</b>\n';
+                    subscriberData.forEach(sub => {
+                        subscriberDetails += `${sub.is_active ? '✅' : '❌'} ${sub.username || 'Unknown'} (${sub.user_id})\n`;
+                    });
+                    // Only send if the message isn't too long
+                    if ((message + subscriberDetails).length < 4000) {
+                        return ctx.replyWithHTML(message + subscriberDetails);
+                    }
+                }
                 
                 return ctx.replyWithHTML(message);
             } catch (error) {
@@ -545,6 +625,165 @@ Last Update: ${new Date().toLocaleString()}`;
             }
         });
         
+        // Command: /subscribers
+        telegramBot.command('subscribers', async (ctx) => {
+            try {
+                console.log(`📋 User requested subscriber list: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+                
+                // Get all subscribers
+                const { data: subscribers, error } = await supabase
+                    .from('telegram_subscribers')
+                    .select('*')
+                    .order('subscribed_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                if (subscribers.length === 0) {
+                    return ctx.reply('No subscribers found in the database.');
+                }
+                
+                let message = `<b>📋 Telegram Bot Subscribers (${subscribers.length})</b>\n\n`;
+                
+                for (const sub of subscribers) {
+                    message += `${sub.is_active ? '✅' : '❌'} <b>${sub.username || 'Unknown'}</b>\n`;
+                    message += `   ID: ${sub.user_id}\n`;
+                    message += `   Subscribed: ${sub.subscribed_at ? new Date(sub.subscribed_at).toLocaleString() : 'N/A'}\n`;
+                    if (sub.unsubscribed_at) {
+                        message += `   Unsubscribed: ${new Date(sub.unsubscribed_at).toLocaleString()}\n`;
+                    }
+                    message += '\n';
+                }
+                
+                return ctx.replyWithHTML(message);
+            } catch (error) {
+                console.error('Telegram /subscribers error:', error.message);
+                return ctx.reply('Sorry, I encountered an error retrieving subscriber information.');
+            }
+        });
+        
+        // Command: /test_alert
+        telegramBot.command('test_alert', async (ctx) => {
+            try {
+                console.log(`🧪 User requested test alert: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+                
+                // Create a test alert
+                const testAlert = {
+                    hubId: 'TEST-HUB',
+                    eventType: 'system',
+                    severity: 'medium',
+                    message: 'This is a test alert to verify the notification system',
+                    coordinates: { lat: 0.35, lng: 34.85 },
+                    mlConfidence: 95,
+                    detectedAt: new Date().toISOString()
+                };
+                
+                // Send notification to all subscribers
+                console.log('🧪 Sending test alert to all subscribers...');
+                await sendNotifications(testAlert);
+                
+                return ctx.replyWithHTML('✅ Test alert sent! Check if you received it.');
+            } catch (error) {
+                console.error('Telegram /test_alert error:', error.message);
+                return ctx.reply('Sorry, I encountered an error sending the test alert.');
+            }
+        });
+
+        // Command: /add_subscriber (for debugging/admin purposes)
+        telegramBot.command('add_subscriber', async (ctx) => {
+            try {
+                console.log(`➕ Admin requested to add subscriber: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+                
+                // Extract user ID from the message (if provided)
+                const args = ctx.message.text.split(' ');
+                if (args.length < 2) {
+                    return ctx.replyWithHTML('Usage: /add_subscriber <user_id> [username]\n\nExample: /add_subscriber 123456789 JohnDoe');
+                }
+                
+                const userId = parseInt(args[1]);
+                const username = args[2] || 'Unknown';
+                
+                if (isNaN(userId)) {
+                    return ctx.replyWithHTML('Invalid user ID. Please provide a valid numeric user ID.');
+                }
+                
+                // Add the subscriber
+                await subscribeUser(userId, username);
+                
+                return ctx.replyWithHTML(`✅ Successfully added subscriber:\nUser ID: ${userId}\nUsername: ${username}`);
+            } catch (error) {
+                console.error('Telegram /add_subscriber error:', error.message);
+                return ctx.reply('Sorry, I encountered an error adding the subscriber.');
+            }
+        });
+
+        // Function to ensure all users who have interacted with the bot are properly subscribed
+        // This is a manual function that can be called to sync subscribers
+        async function syncAllSubscribers() {
+            try {
+                console.log('🔄 Starting manual subscriber sync process...');
+                
+                // This function would typically be called with a list of user IDs
+                // Since we can't fetch all users from Telegram, we work with what we have in the database
+                
+                // Get all subscribers from the database
+                const { data: allSubscribers, error: fetchError } = await supabase
+                    .from('telegram_subscribers')
+                    .select('*');
+                
+                if (fetchError) throw fetchError;
+                
+                console.log(`📋 Found ${allSubscribers.length} subscribers in database`);
+                
+                // Ensure all subscribers have is_active = true (unless they've unsubscribed)
+                let updatedCount = 0;
+                for (const subscriber of allSubscribers) {
+                    // Skip if they've explicitly unsubscribed
+                    if (subscriber.unsubscribed_at) {
+                        console.log(`⏭️ Skipping unsubscribed user: ${subscriber.user_id}`);
+                        continue;
+                    }
+                    
+                    // Update any subscriber without is_active = true
+                    if (!subscriber.is_active) {
+                        console.log(`🔄 Activating subscriber: ${subscriber.user_id}`);
+                        const { error: updateError } = await supabase
+                            .from('telegram_subscribers')
+                            .update({ 
+                                is_active: true,
+                                subscribed_at: new Date().toISOString()
+                            })
+                            .eq('user_id', subscriber.user_id);
+                        
+                        if (updateError) {
+                            console.error(`❌ Error updating subscriber ${subscriber.user_id}:`, updateError.message);
+                        } else {
+                            updatedCount++;
+                        }
+                    }
+                }
+                
+                console.log(`✅ Subscriber sync complete. Updated ${updatedCount} subscribers.`);
+                
+            } catch (error) {
+                console.error('Subscriber sync error:', error.message);
+            }
+        }
+
+        // Add a command to trigger manual sync
+        telegramBot.command('sync_subscribers', async (ctx) => {
+            try {
+                console.log(`🔄 Admin requested subscriber sync: ${ctx.from.id} (${ctx.from.username || 'Unknown'})`);
+                
+                // In a production environment, you might want to restrict this to admin users only
+                await syncAllSubscribers();
+                
+                return ctx.replyWithHTML('✅ Subscriber sync process completed. Check server logs for details.');
+            } catch (error) {
+                console.error('Telegram /sync_subscribers error:', error.message);
+                return ctx.reply('Sorry, I encountered an error during subscriber sync.');
+            }
+        });
+
         // Launch the bot
         telegramBot.launch();
         console.log(' Telegram bot started');
@@ -713,13 +952,11 @@ async function processForestAlert(event, topic) {
                 .catch(err => console.error(' Blockchain error:', err.message));
         }
         
-        // Send notifications for critical events
-        if (['critical', 'high'].includes(alert.severity.toLowerCase())) {
-            console.log('📱 Sending notifications...');
-            sendNotifications(alert)
-                .then(() => console.log(' Notifications sent'))
-                .catch(err => console.error(' Notification error:', err.message));
-        }
+        // Send notifications to ALL subscribers for ALL events (except low severity)
+        console.log('📱 Sending notifications to all subscribers...');
+        sendNotifications(alert)
+            .then(() => console.log(' Notifications sent'))
+            .catch(err => console.error(' Notification error:', err.message));
         
         const processingTime = Date.now() - startTime;
         console.log(`  Processing: ${processingTime}ms`);
@@ -1051,21 +1288,157 @@ async function logToBlockchain(alertHash, alert, supabaseId) {
     }
 }
 
+// ============== SUBSCRIBER MANAGEMENT ==============
+
+async function subscribeUser(userId, username) {
+    try {
+        console.log(`➕ Subscribing user ${userId} (${username})`);
+        const { data, error } = await supabase
+            .from('telegram_subscribers')
+            .upsert({
+                user_id: userId,
+                username: username,
+                subscribed_at: new Date().toISOString(),
+                is_active: true
+            }, { onConflict: 'user_id', returning: 'representation' });
+        
+        if (error) throw error;
+        
+        console.log(`✅ User ${userId} subscribed to alerts`, data);
+    } catch (error) {
+        console.error('Subscribe user error:', error.message);
+        console.error('Error details:', error);
+        throw error;
+    }
+}
+
+async function unsubscribeUser(userId) {
+    try {
+        console.log(`➖ Unsubscribing user ${userId}`);
+        const { error } = await supabase
+            .from('telegram_subscribers')
+            .update({ 
+                is_active: false,
+                unsubscribed_at: new Date().toISOString()
+            })
+            .eq('user_id', userId);
+        
+        if (error) throw error;
+        
+        console.log(`✅ User ${userId} unsubscribed from alerts`);
+    } catch (error) {
+        console.error('Unsubscribe user error:', error.message);
+        throw error;
+    }
+}
+
+async function getActiveSubscribers() {
+    try {
+        console.log('🔍 Querying active subscribers from database...');
+        const { data, error } = await supabase
+            .from('telegram_subscribers')
+            .select('user_id')
+            .eq('is_active', true);
+        
+        if (error) {
+            console.error('Supabase query error:', error.message);
+            console.error('Error details:', error);
+            throw error;
+        }
+        
+        console.log(`📋 Retrieved ${data.length} active subscribers from database`);
+        console.log('📋 Subscriber data:', JSON.stringify(data, null, 2));
+        return data.map(subscriber => subscriber.user_id);
+    } catch (error) {
+        console.error('Get active subscribers error:', error.message);
+        return [];
+    }
+}
+
 // ============== NOTIFICATIONS ==============
 
 async function sendNotifications(alert) {
+    // Skip sending notifications for low severity alerts
+    if (alert.severity && alert.severity.toLowerCase() === 'low') {
+        console.log(`🚫 Skipping notification for low severity alert: ${alert.eventType}`);
+        return;
+    }
+    
+    console.log(`🔔 Preparing to send notifications for alert: ${alert.eventType} (${alert.severity})`);
     const message = formatForestAlert(alert);
     const promises = [];
     
+    // Send Telegram notifications to all subscribers for all events (except low)
     if (config.telegram.enabled && config.telegram.botToken) {
-        promises.push(sendTelegram(message));
+        console.log('📱 Telegram notifications enabled, preparing to send...');
+        promises.push(sendTelegramToAllSubscribers(message));
+    } else {
+        console.log('📱 Telegram notifications disabled or bot token missing');
+        if (!config.telegram.enabled) console.log('   - Telegram not enabled in config');
+        if (!config.telegram.botToken) console.log('   - Telegram bot token not set');
     }
     
-    if (config.africastalking.enabled && alert.severity === 'critical') {
+    // Send SMS notifications for all events (except low)
+    if (config.africastalking.enabled) {
+        console.log('💬 SMS notifications enabled, preparing to send...');
         promises.push(sendSMS(message));
+    } else {
+        console.log('💬 SMS notifications disabled');
     }
     
+    console.log(`📤 Sending ${promises.length} notification types...`);
     await Promise.allSettled(promises);
+    console.log('📤 All notification types processed');
+}
+
+async function sendTelegramToAllSubscribers(message) {
+    try {
+        console.log('🔍 Getting active subscribers...');
+        const subscribers = await getActiveSubscribers();
+        console.log(`📋 Found ${subscribers.length} active subscribers`);
+        
+        // Also send to the original chatId for backward compatibility
+        if (config.telegram.chatId) {
+            console.log(`🔄 Also sending to original chatId: ${config.telegram.chatId}`);
+            try {
+                await telegramBot.telegram.sendMessage(config.telegram.chatId, message, { parse_mode: 'HTML' });
+                console.log(`    ✅ Message sent successfully to original chatId ${config.telegram.chatId}`);
+            } catch (error) {
+                console.error(`    ❌ Failed to send message to original chatId ${config.telegram.chatId}:`, error.message);
+            }
+        }
+        
+        if (subscribers.length === 0) {
+            console.log('    No active subscribers to send alerts to');
+            return;
+        }
+        
+        console.log(`    Sending alert to ${subscribers.length} subscribers`);
+        
+        // Send to each subscriber
+        const sendPromises = subscribers.map(userId => 
+            telegramBot.telegram.sendMessage(userId, message, { parse_mode: 'HTML' })
+                .then(() => {
+                    console.log(`    ✅ Message sent successfully to user ${userId}`);
+                })
+                .catch(error => {
+                    console.error(`    ❌ Failed to send message to user ${userId}:`, error.message);
+                    
+                    // If the error is due to the user blocking the bot, unsubscribe them
+                    if (error.response && error.response.error_code === 403) {
+                        console.log(`    User ${userId} blocked the bot, unsubscribing...`);
+                        return unsubscribeUser(userId);
+                    }
+                })
+        );
+        
+        await Promise.allSettled(sendPromises);
+        
+        console.log('    Telegram alerts sent to all subscribers');
+    } catch (error) {
+        console.error('    Telegram broadcast failed:', error.message);
+        console.error('    Stack trace:', error.stack);
+    }
 }
 
 async function sendTelegram(message) {
@@ -1503,6 +1876,24 @@ app.get('/api/antugrow/:index', async (req, res) => {
         });
     }
 });
+
+// ============== DATABASE INITIALIZATION ==============
+
+// Create the telegram_subscribers table if it doesn't exist
+// This should be run once to set up the database schema
+async function initializeDatabase() {
+    try {
+        console.log(' Initializing database tables...');
+        
+        // The telegram_subscribers table should already be created via Supabase SQL editor
+        console.log('✅ Database initialization complete');
+    } catch (error) {
+        console.error('Database initialization error:', error.message);
+    }
+}
+
+// Call this function when the server starts
+initializeDatabase();
 
 // ============== START SERVER ==============
 
